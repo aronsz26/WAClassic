@@ -1,0 +1,20 @@
+# WA Classic bridge for an always-on computer (pi, nas, server)
+#   docker compose up -d
+#   setup page: http://localhost:8097
+services:
+  wa-classic:
+    image: ghcr.io/aronsz26/wa-classic-bridge:latest
+    build: ./bridge     # fallback if the image can't be pulled
+    restart: unless-stopped
+    ports:
+      - "8097:8097"     # lan only, do NOT forward this one
+      - "25567:25567"   # away from home (tls), forward this one
+    environment:
+      # dyndns name or fixed ip for away mode, empty = home only
+      WA4S_PUBLIC_HOST: ""
+      # only if the outside port isn't 25567
+      WA4S_PUBLIC_PORT: ""
+    volumes:
+      - wa-classic-data:/data   # session, messages, keys - back this up
+volumes:
+  wa-classic-data:

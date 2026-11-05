@@ -1,0 +1,14 @@
+--- a/engine_media.go	2026-10-25 08:17:10
++++ b/engine_media.go	2026-10-25 08:17:10
+@@ -1616,6 +1616,11 @@
+ 	packets := make([][]byte, 0, len(payloads))
+ 	for i, payload := range payloads {
+ 		header := vs.stream.NextPacket(i == len(payloads)-1, mediaFrameInfo)
++		if bw, err := strconv.Atoi(os.Getenv("WA4S_VIDEO_EXT_BW")); err == nil && header.VideoExtension != nil {
++			// troubleshooting: extension 5 and 6 as an iPhone fills them (bandwidth 11074, 10-28 ms since capture)
++			header.VideoExtension.InitialBandwidth = uint16(bw)
++			header.VideoExtension.ShortOffset = 15
++		}
+ 		logVideoHeader(vs.log, "out", &vs.headersLogged, header, rtp.EncodeRtpHeader(&header), payload)
+ 		packet, err := vs.pipe.ProtectRTP(&header, payload)
+ 		if err == nil {

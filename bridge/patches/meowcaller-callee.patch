@@ -1,0 +1,188 @@
+--- a/engine.go	2026-10-25 07:33:49
++++ b/engine.go	2026-10-25 07:34:04
+@@ -78,6 +78,10 @@
+ 
+ 	// The callee <accept> is deferred until the caller's <mute_v2> arrives.
+ 	acceptPending bool
++	// WA4S: the relay the caller announced in its <relaylatency> (the one it dials, lowest latency),
++	// for the callee to dial the same - the relay only bridges the media of two endpoints on it
++	callerRelay        string
++	callerRelayLatency uint32
+ }
+ 
+ // newEngine creates the engine for a Client.
+@@ -579,6 +583,14 @@
+ 	if device, ok := inviteDeviceCapability(ev.From, ev.Data); ok {
+ 		m.invitePeerDevice = device
+ 	}
++	// WA4S: the caller's capability - bit 31 (byte 5, 0x80) says it can send MLOW; without it the audio
++	// comes as standard Opus, which decoded as MLOW is noise or silence (whatsapp-rust #1105)
++	if cp := m.invitePeerDevice.Capability; len(cp) > 0 {
++		e.c.log.Info().Str("call_id", ev.CallID).Str("capability", hex.EncodeToString(cp)).
++			Bool("mlow_bit", len(cp) > 5 && cp[5]&0x80 != 0).Msg("caller capability")
++	} else {
++		e.c.log.Info().Str("call_id", ev.CallID).Msg("caller capability: none in the offer")
++	}
+ 	if r := findRelay(ev.Data); r != nil {
+ 		m.relay = parseRelayData(r)
+ 		if !m.relay.peerJID.IsEmpty() {
+@@ -693,9 +705,15 @@
+ 	}
+ 	e.mu.Lock()
+ 	m.acceptPending = true
++	to, creator := m.from, m.creator
+ 	e.mu.Unlock()
+ 
+ 	c.setPhase(CallPhaseConnecting)
++	// WA4S: accept right away, as whatsapp-rust's callee does - with the <accept> deferred until the caller's
++	// <mute_v2>, the relay never forwarded the caller's media (#37/#40). WA4S_CALLEE_ACCEPT=mute_v2 = as before.
++	if os.Getenv("WA4S_CALLEE_ACCEPT") != "mute_v2" {
++		e.sendAccept(c.id, to, creator)
++	}
+ 	e.maybeStartMedia(c.id)
+ 	return nil
+ }
+@@ -713,12 +731,17 @@
+ 	m.acceptPending = false
+ 	e.mu.Unlock()
+ 
+-	accept := signaling.BuildAccept(&signaling.AcceptParams{
++	params := &signaling.AcceptParams{
+ 		CallID: callID, To: to, CallCreator: creator,
+ 		AudioRates: []string{"16000"},
+ 		Metadata:   waBinary.Attrs{"peer_abtest_bucket_id_list": "125208,94276"},
+ 		Video:      isVideo,
+-	})
++	}
++	if os.Getenv("WA4S_CALLEE_ACCEPT") != "mute_v2" && !isVideo {
++		// whatsapp-rust's audio accept: the offer capability, no metadata
++		params.Metadata, params.Capability = nil, signaling.CapabilityOffer
++	}
++	accept := signaling.BuildAccept(params)
+ 	accept.Attrs["id"] = e.c.wa.DangerousInternals().GenerateRequestID()
+ 	if err := e.c.wa.DangerousInternals().SendNode(context.Background(), accept); err != nil {
+ 		e.c.log.Error().Err(err).Str("call_id", callID).Msg("send accept failed")
+@@ -820,7 +843,37 @@
+ 			addr:      nodeBytes(te),
+ 		})
+ 	}
++	e.mu.Lock()
+ 	for _, p := range probes {
++		if p.relayName != "" && (m.callerRelay == "" || p.latency < m.callerRelayLatency) {
++			m.callerRelay, m.callerRelayLatency = p.relayName, p.latency
++		}
++	}
++	callerRelay := m.callerRelay
++	e.mu.Unlock()
++	for _, p := range probes {
++		e.c.log.Info().Str("call_id", ev.CallID).Str("relay_name", p.relayName).Uint32("latency", p.latency).
++			Str("from", ev.From.String()).Msg("caller relaylatency")
++	}
++	// WA4S: the caller's probes are not echoed back (whatsapp-rust's callee sends none; echoing them was part
++	// of the setup in which the caller's media never arrived, #37/#40). WA4S_CALLEE_RL=echo = as before,
++	// =own announces only the caller's relay.
++	switch os.Getenv("WA4S_CALLEE_RL") {
++	case "echo", "own":
++	default:
++		return
++	}
++	if os.Getenv("WA4S_CALLEE_RL") == "own" && callerRelay != "" {
++		// troubleshooting: announce only the relay this callee dials (the caller's), like a caller does
++		var own []rlProbe
++		for _, p := range probes {
++			if p.relayName == callerRelay {
++				own = append(own, p)
++			}
++		}
++		probes = own
++	}
++	for _, p := range probes {
+ 		resp := signaling.BuildRelayLatency(&signaling.RelayLatencyParams{
+ 			CallID:       ev.CallID,
+ 			To:           ev.From,
+@@ -1524,6 +1577,7 @@
+ 	relayTokens   [][]byte // indexed <token id=…>
+ 	endpoints     []relayEndpoint
+ 	peerJID       types.JID
++	callerRelay   string // WA4S: for an inbound call, the relay the caller announced (see callMedia)
+ }
+ 
+ func nodeBytes(n *waBinary.Node) []byte {
+@@ -1675,6 +1729,15 @@
+ 	if want := os.Getenv("WA4S_CALL_RELAY"); inbound && want != "" {
+ 		for i := range rd.endpoints {
+ 			if e := &rd.endpoints[i]; e.relayName == want {
++				return e
++			}
++		}
++	}
++	if inbound && rd.callerRelay != "" {
++		// WA4S: the relay the caller dials - otherwise each side sits on its own relay and the callee
++		// hears nothing (meowcaller issues #37/#40)
++		for i := range rd.endpoints {
++			if e := &rd.endpoints[i]; e.relayName == rd.callerRelay {
+ 				return e
+ 			}
+ 		}
+--- a/engine_media.go	2026-10-25 07:33:49
++++ b/engine_media.go	2026-10-25 07:33:49
+@@ -9,6 +9,8 @@
+ 	"io"
+ 	"math"
+ 	"net"
++	"os"
++	"strconv"
+ 	"sync"
+ 	"sync/atomic"
+ 	"time"
+@@ -93,6 +95,11 @@
+ 	}
+ 	selfLID, peerLID := m.selfLID, m.peerLID
+ 	inbound := m.direction == CallDirectionIncoming
++	if inbound && !m.group && m.callerRelay != "" && os.Getenv("WA4S_CALLEE_RELAY") != "own" {
++		cp := *rd
++		cp.callerRelay = m.callerRelay
++		rd = &cp
++	}
+ 	e.mu.Unlock()
+ 
+ 	if call != nil {
+@@ -118,6 +125,13 @@
+ 		return nil, nil, fmt.Errorf("relay has no usable endpoint")
+ 	}
+ 	addr := &net.UDPAddr{IP: net.ParseIP(ep.addresses[0].ipv4), Port: int(ep.addresses[0].port)}
++	// WA4S troubleshooting: WA4S_RELAY_PORT=3480 dials the port WhatsApp Web uses instead of the advertised one
++	if p, err := strconv.Atoi(os.Getenv("WA4S_RELAY_PORT")); err == nil && p > 0 && inbound {
++		addr.Port = p
++	}
++	if inbound {
++		log.Info().Str("caller_relay", rd.callerRelay).Str("chosen", ep.relayName).Msg("callee relay choice")
++	}
+ 	for _, c := range rd.endpoints { // WA4S: which relays the offer listed
+ 		log.Info().Bool("inbound", inbound).Str("relay_name", c.relayName).Uint32("token_id", c.tokenID).
+ 			Uint32("auth_token_id", c.authTokenID).Bool("is_fna", c.isFNA).Uint32("c2r_rtt", c.c2rRTT).Msg("relay candidate")
+--- a/engine_wa4s_test.go	1970-01-01 01:00:00
++++ b/engine_wa4s_test.go	2026-10-25 07:33:49
+@@ -0,0 +1,22 @@
++package meowcaller
++
++import "testing"
++
++// WA4S: an inbound call dials the relay the caller announced, not the nearest one.
++func TestInboundRelayFollowsCaller(t *testing.T) {
++	rd := &relayData{endpoints: []relayEndpoint{
++		{relayName: "vie1c01", c2rRTT: 20, addresses: []relayAddress{{ipv4: "1.1.1.1", port: 3478}}},
++		{relayName: "fra5c01", c2rRTT: 27, addresses: []relayAddress{{ipv4: "2.2.2.2", port: 3478}}},
++	}}
++	if ep := getMediaRelayEndpoint(rd, true); ep.relayName != "vie1c01" {
++		t.Fatalf("without the caller's relay: %s, want the nearest", ep.relayName)
++	}
++	rd.callerRelay = "fra5c01"
++	if ep := getMediaRelayEndpoint(rd, true); ep.relayName != "fra5c01" {
++		t.Fatalf("with the caller's relay: %s, want fra5c01", ep.relayName)
++	}
++	rd.callerRelay = "ams9c01" // not in the offer: as before
++	if ep := getMediaRelayEndpoint(rd, true); ep.relayName != "vie1c01" {
++		t.Fatalf("unknown caller relay: %s", ep.relayName)
++	}
++}

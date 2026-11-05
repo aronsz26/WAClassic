@@ -1,0 +1,123 @@
+--- a/rtp/h264.go	2026-10-25 00:11:11
++++ b/rtp/h264.go	2026-10-25 00:11:20
+@@ -173,7 +173,9 @@
+ 	accessUnit     []byte
+ 	expectedSeq    uint16
+ 	hasSequence    bool
+-	keyframeNeeded bool
++	keyframeNeeded bool // a loss was reported and nothing came through since
++	damaged        bool // the access unit being put together lost packets
++	decodable      bool // a key frame came since the stream (re)started
+ 
+ 	// putting packets back in order
+ 	held    map[uint16]heldPacket
+@@ -198,6 +200,7 @@
+ func (a *H264AccessUnitAssembler) Push(sequence uint16, marker bool, payload []byte) ([]byte, bool, bool) {
+ 	if d := int16(sequence - a.next); !a.hasNext || d < -1000 || d > 1000 { // first packet, or the sender started over
+ 		a.held = nil
++		a.decodable = false
+ 		a.next, a.hasNext = sequence, true
+ 	} else if d < 0 { // late or twice: its place is already taken (or counted as lost)
+ 		au, ok := a.Next()
+@@ -259,6 +262,7 @@
+ 		a.depacketizer = H264Depacketizer{}
+ 		a.accessUnit = nil
+ 		a.keyframeNeeded = true
++		a.damaged = true
+ 	}
+ 	a.hasSequence = true
+ 	a.expectedSeq = sequence + 1
+@@ -269,6 +273,7 @@
+ 			a.depacketizer = H264Depacketizer{}
+ 			a.accessUnit = nil
+ 			a.keyframeNeeded = true
++			a.damaged = true
+ 			break
+ 		}
+ 		a.accessUnit = append(a.accessUnit, 0x00, 0x00, 0x00, 0x01)
+@@ -279,6 +284,7 @@
+ 		a.depacketizer = H264Depacketizer{}
+ 		a.accessUnit = nil
+ 		a.keyframeNeeded = true
++		a.damaged = true
+ 	}
+ 	if !marker {
+ 		return nil, false, recoveryNeeded
+@@ -287,15 +293,23 @@
+ 	accessUnit := a.accessUnit
+ 	a.accessUnit = nil
+ 	a.depacketizer = H264Depacketizer{}
++	if a.damaged {
++		// only the unit the loss hit is dropped: WhatsApp mostly recovers from a long-term
++		// reference picture rather than a key frame, so waiting for one froze the picture
++		a.damaged = false
++		return nil, false, recoveryNeeded
++	}
+ 	if len(accessUnit) == 0 {
+ 		return nil, false, recoveryNeeded
+ 	}
+-	if a.keyframeNeeded {
++	if !a.decodable {
++		// nothing decodes before the first key frame (it brings SPS and PPS): ask for one until it comes
+ 		if !AUHasIDR(accessUnit) {
+-			return nil, false, recoveryNeeded
++			return nil, false, true
+ 		}
+-		a.keyframeNeeded = false
++		a.decodable = true
+ 	}
++	a.keyframeNeeded = false // the next loss asks for recovery again
+ 	return accessUnit, true, recoveryNeeded
+ }
+ 
+--- a/rtp/h264_test.go	2026-10-25 00:11:11
++++ b/rtp/h264_test.go	2026-10-25 00:11:32
+@@ -51,7 +51,7 @@
+ 	}
+ }
+ 
+-func TestH264AccessUnitAssemblerWaitsForIDRAfterPacketGap(t *testing.T) {
++func TestH264AccessUnitAssemblerDropsOnlyTheDamagedUnitAfterPacketGap(t *testing.T) {
+ 	idr := make([]byte, 2400)
+ 	idr[0] = 0x65
+ 	for i := 1; i < len(idr); i++ {
+@@ -63,6 +63,9 @@
+ 	}
+ 
+ 	var assembler H264AccessUnitAssembler
++	if _, complete, _ := assembler.pushOrdered(99, true, []byte{0x65, 0x01}); !complete { // decodable from here on
++		t.Fatal("first key frame not delivered")
++	}
+ 	if got, complete, recovery := assembler.pushOrdered(100, false, idrPackets[0]); complete || recovery || got != nil {
+ 		t.Fatalf("first fragment = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+@@ -77,8 +80,8 @@
+ 	}
+ 
+ 	delta := []byte{0x41, 0x9a, 0x01}
+-	if got, complete, recovery := assembler.pushOrdered(104, true, delta); complete || recovery || got != nil {
+-		t.Fatalf("delta after loss = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
++	if got, complete, recovery := assembler.pushOrdered(104, true, delta); !complete || recovery || !bytes.Equal(got, append([]byte{0, 0, 0, 1}, delta...)) {
++		t.Fatalf("delta after loss = complete:%t recovery:%t bytes:%x", complete, recovery, got)
+ 	}
+ 
+ 	recovery := []byte{0x65, 0x88, 0x84}
+@@ -216,5 +219,18 @@
+ 	}
+ 	if !recovered {
+ 		t.Fatal("no recovery request after the window")
++	}
++}
++
++func TestH264AccessUnitAssemblerAsksForKeyframeAtStart(t *testing.T) {
++	var assembler H264AccessUnitAssembler
++	if _, ok, rec := assembler.Push(5, true, []byte{0x41, 1}); ok || !rec {
++		t.Fatalf("delta before any key frame: delivered=%v recovery=%v", ok, rec)
++	}
++	if _, ok, _ := assembler.Push(6, true, []byte{0x65, 2}); !ok {
++		t.Fatal("key frame not delivered")
++	}
++	if _, ok, rec := assembler.Push(7, true, []byte{0x41, 3}); !ok || rec {
++		t.Fatalf("delta after the key frame: delivered=%v recovery=%v", ok, rec)
+ 	}
+ }

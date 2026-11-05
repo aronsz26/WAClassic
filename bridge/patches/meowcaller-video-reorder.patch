@@ -1,0 +1,202 @@
+--- a/engine_media.go	2026-10-24 23:57:21
++++ b/engine_media.go	2026-10-24 23:57:22
+@@ -1030,7 +1030,7 @@
+ 					log.Warn().Err(feedbackErr).Uint32("ssrc", vh.Ssrc).Msg("failed to request video keyframe after RTP loss")
+ 				}
+ 			}
+-			if complete {
++			for ; complete; frame, complete = videoState.assembler.Next() {
+ 				if videoWireFrame < videoWireFrameLimit {
+ 					e.c.diag.Emit("video_wire", map[string]any{
+ 						"event": "access_unit", "direction": "in", "call_id": callID,
+--- a/rtp/h264.go	2026-10-24 23:57:22
++++ b/rtp/h264.go	2026-10-24 23:57:22
+@@ -174,11 +174,84 @@
+ 	expectedSeq    uint16
+ 	hasSequence    bool
+ 	keyframeNeeded bool
++
++	// putting packets back in order
++	held    map[uint16]heldPacket
++	next    uint16
++	hasNext bool
++	ready   [][]byte
+ }
+ 
+-// Push consumes one ordered RTP payload and returns a complete, decodable access
+-// unit when the marker closes the frame.
++// h264ReorderWindow is how many later packets may arrive while an earlier one is missing before
++// that one counts as lost.
++const h264ReorderWindow = 10
++
++type heldPacket struct {
++	marker  bool
++	payload []byte
++}
++
++// Push takes one RTP payload in arrival order. A packet that comes early waits for the missing
++// earlier ones (up to h264ReorderWindow later packets); only then the gap counts as loss - over a
++// relay, packets often come slightly out of order. It returns the first access unit that became
++// complete; Next hands out any further ones.
+ func (a *H264AccessUnitAssembler) Push(sequence uint16, marker bool, payload []byte) ([]byte, bool, bool) {
++	if d := int16(sequence - a.next); !a.hasNext || d < -1000 || d > 1000 { // first packet, or the sender started over
++		a.held = nil
++		a.next, a.hasNext = sequence, true
++	} else if d < 0 { // late or twice: its place is already taken (or counted as lost)
++		au, ok := a.Next()
++		return au, ok, false
++	}
++	if a.held == nil {
++		a.held = map[uint16]heldPacket{}
++	}
++	a.held[sequence] = heldPacket{marker: marker, payload: append([]byte(nil), payload...)}
++	recoveryNeeded := false
++	for {
++		for {
++			p, ok := a.held[a.next]
++			if !ok {
++				break
++			}
++			delete(a.held, a.next)
++			au, complete, recovery := a.pushOrdered(a.next, p.marker, p.payload)
++			recoveryNeeded = recoveryNeeded || recovery
++			if complete {
++				a.ready = append(a.ready, au)
++			}
++			a.next++
++		}
++		if len(a.held) <= h264ReorderWindow {
++			break
++		}
++		// still missing after a window of later packets: lost; go on with the earliest one held
++		first := true
++		var earliest uint16
++		for s := range a.held {
++			if first || int16(s-a.next) < int16(earliest-a.next) {
++				earliest, first = s, false
++			}
++		}
++		a.next = earliest
++	}
++	au, ok := a.Next()
++	return au, ok, recoveryNeeded
++}
++
++// Next hands out the next access unit that became complete in the last Push, if any.
++func (a *H264AccessUnitAssembler) Next() ([]byte, bool) {
++	if len(a.ready) == 0 {
++		return nil, false
++	}
++	au := a.ready[0]
++	a.ready = a.ready[1:]
++	return au, true
++}
++
++// pushOrdered consumes one ordered RTP payload and returns a complete, decodable access
++// unit when the marker closes the frame.
++func (a *H264AccessUnitAssembler) pushOrdered(sequence uint16, marker bool, payload []byte) ([]byte, bool, bool) {
+ 	// Source of truth: https://github.com/JotaDev66/WaCalls/blob/2d6a1f666426049a89ef9541414e771acdcf8a16/internal/voip/transport/h264_packet.go#L138-L210
+ 	recoveryNeeded := false
+ 	if a.hasSequence && sequence != a.expectedSeq {
+--- a/rtp/h264_test.go	2026-10-24 23:57:22
++++ b/rtp/h264_test.go	2026-10-24 23:57:35
+@@ -63,26 +63,26 @@
+ 	}
+ 
+ 	var assembler H264AccessUnitAssembler
+-	if got, complete, recovery := assembler.Push(100, false, idrPackets[0]); complete || recovery || got != nil {
++	if got, complete, recovery := assembler.pushOrdered(100, false, idrPackets[0]); complete || recovery || got != nil {
+ 		t.Fatalf("first fragment = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+-	if got, complete, recovery := assembler.Push(102, false, idrPackets[2]); complete || !recovery || got != nil {
++	if got, complete, recovery := assembler.pushOrdered(102, false, idrPackets[2]); complete || !recovery || got != nil {
+ 		t.Fatalf("gapped fragment = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+-	if got, complete, recovery := assembler.Push(103, true, idrPackets[3]); complete || recovery || got != nil {
++	if got, complete, recovery := assembler.pushOrdered(103, true, idrPackets[3]); complete || recovery || got != nil {
+ 		t.Fatalf("damaged IDR = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+-	if got, complete, recovery := assembler.Push(103, true, []byte{0x41, 0x01}); complete || recovery || got != nil {
++	if got, complete, recovery := assembler.pushOrdered(103, true, []byte{0x41, 0x01}); complete || recovery || got != nil {
+ 		t.Fatalf("reordered packet while recovering = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+ 
+ 	delta := []byte{0x41, 0x9a, 0x01}
+-	if got, complete, recovery := assembler.Push(104, true, delta); complete || recovery || got != nil {
++	if got, complete, recovery := assembler.pushOrdered(104, true, delta); complete || recovery || got != nil {
+ 		t.Fatalf("delta after loss = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+ 
+ 	recovery := []byte{0x65, 0x88, 0x84}
+-	got, complete, request := assembler.Push(105, true, recovery)
++	got, complete, request := assembler.pushOrdered(105, true, recovery)
+ 	want := append([]byte{0, 0, 0, 1}, recovery...)
+ 	if !complete || request || !bytes.Equal(got, want) {
+ 		t.Fatalf("recovery access unit = (%t, %t, %x), want (true, false, %x)", complete, request, got, want)
+@@ -97,7 +97,7 @@
+ 	recoveryRequests := 0
+ 	var sequence uint16
+ 	for total := 0; total < maxAccessUnitBytes*2; total += len(payload) {
+-		_, complete, recovery := assembler.Push(sequence, false, payload)
++		_, complete, recovery := assembler.pushOrdered(sequence, false, payload)
+ 		sequence++
+ 		if complete {
+ 			t.Fatal("marker-free stream emitted an access unit")
+@@ -113,12 +113,12 @@
+ 		t.Fatalf("recovery requests = %d, want 1", recoveryRequests)
+ 	}
+ 
+-	if got, complete, recovery := assembler.Push(sequence, true, []byte{0x41, 1}); complete || recovery || got != nil {
++	if got, complete, recovery := assembler.pushOrdered(sequence, true, []byte{0x41, 1}); complete || recovery || got != nil {
+ 		t.Fatalf("delta while recovering = complete:%t recovery:%t bytes:%d", complete, recovery, len(got))
+ 	}
+ 	sequence++
+ 	idr := []byte{0x65, 1, 2}
+-	got, complete, recovery := assembler.Push(sequence, true, idr)
++	got, complete, recovery := assembler.pushOrdered(sequence, true, idr)
+ 	if !complete || recovery || !bytes.Equal(got, append([]byte{0, 0, 0, 1}, idr...)) {
+ 		t.Fatalf("IDR recovery = complete:%t recovery:%t bytes:%x", complete, recovery, got)
+ 	}
+@@ -179,5 +179,42 @@
+ 	nalus := SplitAnnexB(stream)
+ 	if len(nalus) != 3 || !bytes.Equal(nalus[0], n1) || !bytes.Equal(nalus[1], n2) || !bytes.Equal(nalus[2], n3) {
+ 		t.Fatalf("AnnexB split mismatch: got %d NALUs %x", len(nalus), nalus)
++	}
++}
++
++func TestH264AccessUnitAssemblerReordersLatePackets(t *testing.T) {
++	var assembler H264AccessUnitAssembler
++	idr := []byte{0x65, 1}
++	p1, p2 := []byte{0x41, 2}, []byte{0x41, 3}
++	if _, ok, _ := assembler.Push(10, true, idr); !ok {
++		t.Fatal("IDR not delivered")
++	}
++	// 12 comes before 11: it waits, then both come out in order without a recovery request
++	if _, ok, rec := assembler.Push(12, true, p2); ok || rec {
++		t.Fatalf("early packet delivered=%v recovery=%v", ok, rec)
++	}
++	first, ok, rec := assembler.Push(11, true, p1)
++	if !ok || rec || first[4] != 0x41 || first[5] != 2 {
++		t.Fatalf("first = %x ok=%v recovery=%v", first, ok, rec)
++	}
++	second, ok := assembler.Next()
++	if !ok || second[5] != 3 {
++		t.Fatalf("second = %x ok=%v", second, ok)
++	}
++	if _, ok := assembler.Next(); ok {
++		t.Fatal("one unit too many")
++	}
++}
++
++func TestH264AccessUnitAssemblerGivesUpOnLostPacket(t *testing.T) {
++	var assembler H264AccessUnitAssembler
++	assembler.Push(0, true, []byte{0x65, 1})
++	recovered := false
++	for seq := uint16(2); seq <= 2+h264ReorderWindow; seq++ { // 1 never comes
++		_, _, rec := assembler.Push(seq, true, []byte{0x41, byte(seq)})
++		recovered = recovered || rec
++	}
++	if !recovered {
++		t.Fatal("no recovery request after the window")
+ 	}
+ }

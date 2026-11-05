@@ -1,0 +1,62 @@
+--- a/engine_media.go	2026-10-25 00:49:52
++++ b/engine_media.go	2026-10-25 00:49:52
+@@ -638,7 +638,7 @@
+ 	lastVideoPLI := make(map[uint32]time.Time)
+ 	var rosterGeneration uint64
+ 	hasRosterGeneration := false
+-	var videoWirePacket, videoWireFrame uint64
++	var videoWirePacket, videoWireFrame, videoHeadersIn uint64
+ 
+ 	// Video send: a second WARP pipeline on our video SSRC, registered on the call so
+ 	// Call.SendVideoFrame can push encoded H.264 to the relay. Cleared when the loop exits.
+@@ -1002,6 +1002,7 @@
+ 					})
+ 				}
+ 			}
++			logVideoHeader(log, "in", &videoHeadersIn, vh, pkt, len(media.Payload))
+ 			if videoWirePacket < videoWirePacketLimit {
+ 				headerLen, _ := rtp.RtpHeaderByteLength(pkt)
+ 				_, extension, _ := rtp.RtpExtensionProfileAndData(pkt)
+@@ -1266,6 +1267,26 @@
+ 	videoWireFrameLimit  = 30
+ )
+ 
++// logVideoHeader notes the RTP header of the first video packets each way at info level - header fields and
++// the raw extension only, no payload or keys - to compare what WhatsApp sends with what this client sends.
++func logVideoHeader(log zerolog.Logger, dir string, n *uint64, h rtp.RtpHeader, raw []byte, payloadBytes int) {
++	if *n >= 150 {
++		return
++	}
++	*n++
++	_, extension, _ := rtp.RtpExtensionProfileAndData(raw)
++	ev := log.Info().Str("dir", dir).Uint16("seq", h.SequenceNumber).Uint32("ts", h.Timestamp).Bool("m", h.Marker).
++		Uint8("pt", h.PayloadType).Int("bytes", payloadBytes).Str("ext", hex.EncodeToString(extension))
++	if x := h.VideoExtension; x != nil {
++		ev = ev.Uint8("mfi", x.MediaFrameInfo).Uint16("bw", x.InitialBandwidth).Int16("off", x.ShortOffset).
++			Uint16("tseq", x.TransportSequence)
++		if x.FrameNumber != nil {
++			ev = ev.Uint16("fn", *x.FrameNumber)
++		}
++	}
++	ev.Msg("video header")
++}
++
+ func videoRtpDurationSamples(duration time.Duration) uint32 {
+ 	if duration <= 0 {
+ 		return defaultVideoRtpStepSamples
+@@ -1294,6 +1315,7 @@
+ 	active           bool
+ 	sendGated        bool
+ 	keyframeRequired bool
++	headersLogged    uint64
+ 	orientation      uint8 // quarter turns clockwise; goes counter-clockwise into each frame's CVO bits
+ 	log              zerolog.Logger
+ 	diag             *diag.Recorder
+@@ -1463,6 +1485,7 @@
+ 	packets := make([][]byte, 0, len(payloads))
+ 	for i, payload := range payloads {
+ 		header := vs.stream.NextPacket(i == len(payloads)-1, mediaFrameInfo)
++		logVideoHeader(vs.log, "out", &vs.headersLogged, header, rtp.EncodeRtpHeader(&header), len(payload))
+ 		packet, err := vs.pipe.ProtectRTP(&header, payload)
+ 		if err == nil {
+ 			packets = append(packets, packet)

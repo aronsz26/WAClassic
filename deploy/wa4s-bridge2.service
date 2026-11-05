@@ -1,0 +1,16 @@
+[Unit]
+Description=WA4S bridge 2 (second WhatsApp account, iPhone 5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=claude
+WorkingDirectory=/home/claude/wa4s
+ExecStart=/home/claude/wa4s/wa4s-bridge -listen 127.0.0.1:8098 -tls-listen :25568 -data /home/claude/wa4s/data2 -assets-auto
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

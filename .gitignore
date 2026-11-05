@@ -1,0 +1,7 @@
+bridge/build/
+data/
+*.ipa
+.DS_Store
+packages/
+tools/shot6/shot6
+bridge/debs/*.deb

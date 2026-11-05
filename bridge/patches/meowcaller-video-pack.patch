@@ -1,0 +1,111 @@
+--- a/engine_media.go	2026-10-25 08:06:11
++++ b/engine_media.go	2026-10-25 08:06:12
+@@ -1019,7 +1019,7 @@
+ 					})
+ 				}
+ 			}
+-			logVideoHeader(log, "in", &videoHeadersIn, vh, pkt, len(media.Payload))
++			logVideoHeader(log, "in", &videoHeadersIn, vh, pkt, media.Payload)
+ 			if videoWirePacket < videoWirePacketLimit {
+ 				headerLen, _ := rtp.RtpHeaderByteLength(pkt)
+ 				_, extension, _ := rtp.RtpExtensionProfileAndData(pkt)
+@@ -1350,16 +1350,49 @@
+ 	*f = peerVideoFeedback{last: time.Now(), cumulativeLost: f.cumulativeLost}
+ }
+ 
++// packNALUs packetizes an access unit per NAL unit: leading SPS/PPS aggregated into a STAP-A, every other NAL
++// unit alone or as FU-A fragments. Access unit delimiters are left out.
++func packNALUs(nalus [][]byte) [][]byte {
++	var out [][]byte
++	var stap []byte
++	for _, n := range nalus {
++		if len(n) == 0 || n[0]&0x1f == 9 {
++			continue
++		}
++		if t := n[0] & 0x1f; (t == 7 || t == 8) && len(stap)+2+len(n) <= 800 {
++			if stap == nil {
++				stap = []byte{n[0]&0x60 | 24}
++			}
++			if n[0]&0x60 > stap[0]&0x60 {
++				stap[0] = n[0]&0x60 | 24
++			}
++			stap = append(stap, byte(len(n)>>8), byte(len(n)))
++			stap = append(stap, n...)
++			continue
++		}
++		if stap != nil {
++			out = append(out, stap)
++			stap = nil
++		}
++		out = append(out, rtp.PackageH264NALU(n)...)
++	}
++	if stap != nil {
++		out = append(out, stap)
++	}
++	return out
++}
++
+ // logVideoHeader notes the RTP header of the first video packets each way at info level - header fields and
+ // the raw extension only, no payload or keys - to compare what WhatsApp sends with what this client sends.
+-func logVideoHeader(log zerolog.Logger, dir string, n *uint64, h rtp.RtpHeader, raw []byte, payloadBytes int) {
++func logVideoHeader(log zerolog.Logger, dir string, n *uint64, h rtp.RtpHeader, raw []byte, payload []byte) {
+ 	if *n >= 150 {
+ 		return
+ 	}
+ 	*n++
+ 	_, extension, _ := rtp.RtpExtensionProfileAndData(raw)
+ 	ev := log.Info().Str("dir", dir).Uint16("seq", h.SequenceNumber).Uint32("ts", h.Timestamp).Bool("m", h.Marker).
+-		Uint8("pt", h.PayloadType).Int("bytes", payloadBytes).Str("ext", hex.EncodeToString(extension))
++		Uint8("pt", h.PayloadType).Int("bytes", len(payload)).Str("ext", hex.EncodeToString(extension)).
++		Str("head", hex.EncodeToString(payload[:min(2, len(payload))])) // NAL/FU-A/STAP-A header bytes
+ 	if x := h.VideoExtension; x != nil {
+ 		ev = ev.Uint8("mfi", x.MediaFrameInfo).Uint16("bw", x.InitialBandwidth).Int16("off", x.ShortOffset).
+ 			Uint16("tseq", x.TransportSequence)
+@@ -1561,6 +1594,11 @@
+ 	}
+ 	// WhatsApp fragments the complete Annex-B access unit as one RTP NAL unit.
+ 	payloads := rtp.PackageH264NALU(packedAccessUnit)
++	if os.Getenv("WA4S_VIDEO_PACK") == "nal" {
++		// WA4S: RFC 6184 per NAL, as whatsapp-rust sends it: parameter sets in one STAP-A, each slice on its own
++		// (FU-A when large)
++		payloads = packNALUs(nalus)
++	}
+ 	captureWire := vs.frame < videoWireFrameLimit
+ 	if captureWire {
+ 		vs.diag.Emit("video_wire", map[string]any{
+@@ -1578,7 +1616,7 @@
+ 	packets := make([][]byte, 0, len(payloads))
+ 	for i, payload := range payloads {
+ 		header := vs.stream.NextPacket(i == len(payloads)-1, mediaFrameInfo)
+-		logVideoHeader(vs.log, "out", &vs.headersLogged, header, rtp.EncodeRtpHeader(&header), len(payload))
++		logVideoHeader(vs.log, "out", &vs.headersLogged, header, rtp.EncodeRtpHeader(&header), payload)
+ 		packet, err := vs.pipe.ProtectRTP(&header, payload)
+ 		if err == nil {
+ 			packets = append(packets, packet)
+--- a/engine_wa4s_pack_test.go	1970-01-01 01:00:00
++++ b/engine_wa4s_pack_test.go	2026-10-25 08:06:12
+@@ -0,0 +1,24 @@
++package meowcaller
++
++import "testing"
++
++// WA4S: per-NAL packetization - SPS+PPS in one STAP-A, a small slice alone, a large one as FU-A.
++func TestPackNALUs(t *testing.T) {
++	sps, pps := []byte{0x67, 1, 2, 3}, []byte{0x68, 4}
++	idr := make([]byte, 2000)
++	idr[0] = 0x65
++	out := packNALUs([][]byte{{9, 0xf0}, sps, pps, idr})
++	if len(out) < 4 || out[0][0]&0x1f != 24 {
++		t.Fatalf("first packet %x, want a STAP-A", out[0][:1])
++	}
++	if want := 1 + 2 + len(sps) + 2 + len(pps); len(out[0]) != want {
++		t.Fatalf("STAP-A %d bytes, want %d", len(out[0]), want)
++	}
++	if out[1][0]&0x1f != 28 || out[1][1]&0x1f != 5 || out[1][1]&0x80 == 0 {
++		t.Fatalf("second packet %x, want FU-A start of the IDR", out[1][:2])
++	}
++	small := packNALUs([][]byte{{0x41, 7, 8}})
++	if len(small) != 1 || small[0][0] != 0x41 {
++		t.Fatalf("small slice %x, want it alone", small)
++	}
++}

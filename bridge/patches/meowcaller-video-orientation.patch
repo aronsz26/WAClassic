@@ -1,0 +1,91 @@
+--- a/engine.go	2026-10-24 23:53:20
++++ b/engine.go	2026-10-24 23:53:20
+@@ -61,6 +61,7 @@
+ 	videoGate         bool         // outbound upgrade is waiting for peer acceptance
+ 	peerVideoUpgrade  bool         // the peer's inbound upgrade is waiting for local acceptance
+ 	videoTx           *videoSender // video send pipeline, live while media runs
++	localOrientation  int          // how the peer turns this client's pictures: quarter turns clockwise (CVO)
+ 	appDataTx         *appDataSender
+ 	rekeyPeer         func(string) error
+ 	group             bool
+@@ -265,6 +266,7 @@
+ 	}
+ 	to, creator, sender := m.from, m.creator, m.videoTx
+ 	localVideoActive := m.localVideo
++	localOrientation := m.localOrientation
+ 	switch transition {
+ 	case signaling.VideoStateUpgradeRequestV2:
+ 		m.localVideo = true
+@@ -304,8 +306,7 @@
+ 	var err error
+ 	switch transition {
+ 	case signaling.VideoStateUpgradeRequestV2:
+-		orientation := 0
+-		err = send(transition, signaling.VideoDecRequest, &orientation)
++		err = send(transition, signaling.VideoDecRequest, &localOrientation)
+ 	case signaling.VideoStateUpgradeAccept:
+ 		if !localVideoActive {
+ 			orientation := 0
+@@ -389,12 +390,20 @@
+ 	}
+ 	e.mu.Lock()
+ 	m := e.calls[callID]
+-	if m == nil || m.call == nil || m.call.State() == CallPhaseEnded || !m.localVideo {
++	if m == nil || m.call == nil || m.call.State() == CallPhaseEnded {
+ 		e.mu.Unlock()
+-		return errors.New("meowcaller: call has no active video media")
++		return errors.New("meowcaller: call is not active")
+ 	}
+-	to, creator := m.from, m.creator
++	// WhatsApp turns the pictures by the orientation in each frame's RTP header (CVO), not the stanza
++	m.localOrientation = orientation
++	to, creator, sender, active := m.from, m.creator, m.videoTx, m.localVideo
+ 	e.mu.Unlock()
++	if sender != nil {
++		sender.setOrientation(orientation)
++	}
++	if !active { // kept for when the video starts
++		return nil
++	}
+ 	node := signaling.BuildVideoStateWithParams(signaling.VideoStateParams{
+ 		CallID: callID, To: to, CallCreator: creator, WrapperID: e.nextCallNodeID(),
+ 		State: signaling.VideoStateEnabled, DeviceOrientation: &orientation,
+--- a/engine_media.go	2026-10-24 23:53:20
++++ b/engine_media.go	2026-10-24 23:53:20
+@@ -681,6 +681,7 @@
+ 	if m := e.calls[callID]; m != nil {
+ 		vsender.active = m.localVideo
+ 		vsender.sendGated = m.videoGate
++		vsender.orientation = uint8(m.localOrientation & 3)
+ 		m.videoTx = vsender
+ 		m.appDataTx = appSender
+ 	}
+@@ -1293,6 +1294,7 @@
+ 	active           bool
+ 	sendGated        bool
+ 	keyframeRequired bool
++	orientation      uint8 // quarter turns clockwise; goes counter-clockwise into each frame's CVO bits
+ 	log              zerolog.Logger
+ 	diag             *diag.Recorder
+ }
+@@ -1408,6 +1410,12 @@
+ 	return packet, err
+ }
+ 
++func (vs *videoSender) setOrientation(orientation int) {
++	vs.mu.Lock()
++	vs.orientation = uint8(orientation & 3)
++	vs.mu.Unlock()
++}
++
+ func (vs *videoSender) protectAccessUnit(au []byte, duration time.Duration) [][]byte {
+ 	vs.mu.Lock()
+ 	defer vs.mu.Unlock()
+@@ -1451,6 +1459,7 @@
+ 	if idr {
+ 		mediaFrameInfo = rtp.VideoMediaFrameInfoIDR
+ 	}
++	mediaFrameInfo |= (4 - vs.orientation) & 3 // CVO counts counter-clockwise (3GPP TS 26.114)
+ 	packets := make([][]byte, 0, len(payloads))
+ 	for i, payload := range payloads {
+ 		header := vs.stream.NextPacket(i == len(payloads)-1, mediaFrameInfo)

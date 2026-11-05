@@ -1,0 +1,135 @@
+--- a/engine_media.go	2026-10-25 01:10:53
++++ b/engine_media.go	2026-10-25 01:11:09
+@@ -8,6 +8,7 @@
+ 	"fmt"
+ 	"io"
+ 	"math"
++	"math/bits"
+ 	"net"
+ 	"os"
+ 	"strconv"
+@@ -823,6 +824,7 @@
+ 	}()
+ 
+ 	buf := make([]byte, 1500)
++	videoFeedback := &peerVideoFeedback{}
+ 	var rtpIn, rtpSeen, unprotectFail, rtpInspect, vidIn, appDataIn, appDataUnprotectFail, videoUnprotectFail, videoFrameIn, videoSinkMissing, rtcpIn, rtcpAuthFail, groupForwardingInvalid uint64
+ 	for {
+ 		if ctx.Err() != nil {
+@@ -884,6 +886,7 @@
+ 			if rtcpIn++; rtcpIn == 1 {
+ 				log.Info().Uint32("ssrc", senderSsrc).Uint32("index", index).Msg("first authenticated peer SRTCP received")
+ 			}
++			videoFeedback.observe(plain, videoSelfSsrc, log)
+ 			keyframe := rtp.RtcpRequestsKeyframe(plain, videoSelfSsrc)
+ 			if keyframe {
+ 				vsender.requestKeyframe()
+@@ -1280,6 +1283,72 @@
+ 	videoWirePacketLimit = 120
+ 	videoWireFrameLimit  = 30
+ )
++
++// peerVideoFeedback sums what the peer's RTCP says about our video (WA4S troubleshooting) and logs it every
++// 5 s: the loss and jitter of its reception report, and how many packets it asked again for (NACK) and how
++// many key frames (PLI/FIR).
++type peerVideoFeedback struct {
++	last                   time.Time
++	reports                int
++	fractionLost, maxLost  int
++	cumulativeLost, jitter uint32
++	nackPackets, plis      int
++}
++
++func (f *peerVideoFeedback) observe(data []byte, videoSsrc uint32, log zerolog.Logger) {
++	for offset := 0; offset+8 <= len(data); {
++		if (data[offset]>>6)&0x03 != 2 {
++			break
++		}
++		n := (int(binary.BigEndian.Uint16(data[offset+2:offset+4])) + 1) * 4
++		if offset+n > len(data) {
++			break
++		}
++		p := data[offset : offset+n]
++		count := int(p[0] & 0x0f) // 0x10 is WhatsApp's profile flag
++		switch p[1] {
++		case 200, 201: // SR, RR: report blocks after the sender info
++			at := 8
++			if p[1] == 200 {
++				at = 28
++			}
++			for i := 0; i < count && at+24 <= len(p); i++ {
++				if binary.BigEndian.Uint32(p[at:]) == videoSsrc {
++					f.reports++
++					f.fractionLost += int(p[at+4])
++					if int(p[at+4]) > f.maxLost {
++						f.maxLost = int(p[at+4])
++					}
++					f.cumulativeLost = binary.BigEndian.Uint32(p[at+4:]) & 0xffffff
++					f.jitter = binary.BigEndian.Uint32(p[at+12:])
++				}
++				at += 24
++			}
++		case 205: // RTPFB: generic NACK, each FCI a packet id and a bitmask of 16 more
++			if p[0]&0x0f == 1 && len(p) >= 12 && binary.BigEndian.Uint32(p[8:]) == videoSsrc {
++				for fci := p[12:]; len(fci) >= 4; fci = fci[4:] {
++					f.nackPackets += 1 + bits.OnesCount16(binary.BigEndian.Uint16(fci[2:]))
++				}
++			}
++		case 206: // PSFB: PLI or FIR
++			if kind := p[0] & 0x0f; (kind == 1 || kind == 4) && len(p) >= 12 {
++				f.plis++
++			}
++		}
++		offset += n
++	}
++	if time.Since(f.last) < 5*time.Second {
++		return
++	}
++	avg := 0
++	if f.reports > 0 {
++		avg = f.fractionLost / f.reports
++	}
++	log.Info().Int("reports", f.reports).Int("avg_lost_256", avg).Int("max_lost_256", f.maxLost).
++		Uint32("cumulative_lost", f.cumulativeLost).Uint32("jitter", f.jitter).Int("nack_packets", f.nackPackets).
++		Int("pli_fir", f.plis).Msg("peer feedback on our video")
++	*f = peerVideoFeedback{last: time.Now(), cumulativeLost: f.cumulativeLost}
++}
+ 
+ // logVideoHeader notes the RTP header of the first video packets each way at info level - header fields and
+ // the raw extension only, no payload or keys - to compare what WhatsApp sends with what this client sends.
+--- a/engine_wa4s_rtcp_test.go	1970-01-01 01:00:00
++++ b/engine_wa4s_rtcp_test.go	2026-10-25 01:11:09
+@@ -0,0 +1,33 @@
++package meowcaller
++
++import (
++	"encoding/binary"
++	"testing"
++
++	"github.com/rs/zerolog"
++)
++
++// WA4S: the peer's reception report and NACKs about our video are summed up.
++func TestPeerVideoFeedback(t *testing.T) {
++	const ssrc = 0xabcdef01
++	rr := make([]byte, 8+24+24) // RR, one block, WhatsApp's 24 extra bytes
++	rr[0], rr[1] = 0x80|0x10|1, 201
++	binary.BigEndian.PutUint16(rr[2:], uint16(len(rr)/4-1))
++	binary.BigEndian.PutUint32(rr[8:], ssrc)
++	rr[12] = 64                               // a quarter lost
++	rr[13], rr[14], rr[15] = 0, 0, 9          // 9 lost in all
++	binary.BigEndian.PutUint32(rr[20:], 1234) // jitter
++	nack := make([]byte, 16)
++	nack[0], nack[1] = 0x80|1, 205
++	binary.BigEndian.PutUint16(nack[2:], 3)
++	binary.BigEndian.PutUint32(nack[8:], ssrc)
++	binary.BigEndian.PutUint16(nack[14:], 0x0003) // one packet + two more in the mask
++	f := &peerVideoFeedback{}
++	f.observe(append(rr, nack...), ssrc, zerolog.Nop()) // logs right away (first time) and resets
++	f2 := &peerVideoFeedback{}
++	f2.last = f.last
++	f2.observe(append(rr, nack...), ssrc, zerolog.Nop())
++	if f2.reports != 1 || f2.fractionLost != 64 || f2.cumulativeLost != 9 || f2.jitter != 1234 || f2.nackPackets != 3 {
++		t.Fatalf("got %+v", *f2)
++	}
++}

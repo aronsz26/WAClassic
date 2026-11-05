@@ -1,0 +1,28 @@
+--- a/engine_media.go	2026-10-25 08:01:59
++++ b/engine_media.go	2026-10-25 08:01:59
+@@ -1370,6 +1370,16 @@
+ 	ev.Msg("video header")
+ }
+ 
++// videoDeltaFrameInfo is the media frame info of a frame that is not a key frame. WA4S: 0x00 as an iPhone
++// sends it (0x03 upright = only the rotation bits) and WhatsApp's web engine does; with meowcaller's 0x20
++// the iPhone showed only about 5 of our 30 pictures a second (suspected cause). WA4S_VIDEO_DELTA_FI=0x20 = as before.
++func videoDeltaFrameInfo() uint8 {
++	if v, err := strconv.ParseUint(os.Getenv("WA4S_VIDEO_DELTA_FI"), 0, 8); err == nil {
++		return uint8(v)
++	}
++	return 0x00
++}
++
+ func videoRtpDurationSamples(duration time.Duration) uint32 {
+ 	if duration <= 0 {
+ 		return defaultVideoRtpStepSamples
+@@ -1560,7 +1570,7 @@
+ 		})
+ 	}
+ 	vs.stream.SetTimestampStride(videoRtpDurationSamples(duration))
+-	mediaFrameInfo := rtp.VideoMediaFrameInfoDelta
++	mediaFrameInfo := videoDeltaFrameInfo()
+ 	if idr {
+ 		mediaFrameInfo = rtp.VideoMediaFrameInfoIDR
+ 	}

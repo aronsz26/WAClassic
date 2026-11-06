@@ -301,6 +301,8 @@ func (c *Calls) apiHangup(w http.ResponseWriter, r *http.Request) {
 		c.apiState(w, r)
 		return
 	}
+	// before Hangup, its OnEnd would otherwise win and the chat says unanswered instead of cancelled
+	c.setState(call, "ended", "local")
 	var err error
 	if info.State == "ringing" {
 		err = call.Reject()
@@ -310,7 +312,6 @@ func (c *Calls) apiHangup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("hangup: %v", err)
 	}
-	c.setState(call, "ended", "local")
 	c.apiState(w, r)
 }
 

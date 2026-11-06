@@ -84,6 +84,7 @@ static void WAInitCAudioSession(void) {
 	NSString *_shownID;
 	NSString *_ownID; // call this phone answered/started, only this one gets audio
 	NSDate *_answeredAt; // callback mode counts as ours too
+	BOOL _starting; // waiting for the /api/call/start answer
 	NSTimer *_poll, *_sendTimer, *_vibrate;
 	BOOL _polling;
 	AudioUnit _unit;
@@ -198,6 +199,8 @@ static BOOL SameMedia(NSDictionary *a, NSDictionary *b) {
 	NSString *st = info[@"state"];
 	BOOL taken = [st isEqualToString:@"calling"] || [st isEqualToString:@"connecting"] || [st isEqualToString:@"active"];
 	if (taken && [info[@"callback"] boolValue] && _answeredAt && -[_answeredAt timeIntervalSinceNow] < 15) self.ownID = info[@"id"];
+	// long poll can beat the /api/call/start answer, that's still our call
+	if (taken && _starting && ![info[@"incoming"] boolValue]) self.ownID = info[@"id"];
 	if (taken && ![info[@"id"] isEqualToString:self.ownID]) {
 		WALog(@"call: %@ on another iPhone", st);
 		NSMutableDictionary *gone = [info mutableCopy];
@@ -320,7 +323,9 @@ static BOOL SameMedia(NSDictionary *a, NSDictionary *b) {
 	// show screen now, bridge answer replaces it
 	_info = @{@"id": @"", @"peer": jid, @"name": name ?: @"", @"incoming": @NO, @"state": @"calling", @"video": @(video)};
 	[[NSNotificationCenter defaultCenter] postNotificationName:WACallChangedNotification object:self];
+	_starting = YES;
 	[[WAClient shared] post:@"/api/call/start" params:@{@"chat": jid, @"video": video ? @"1" : @"0"} completion:^(id json, NSError *error) {
+		self->_starting = NO;
 		if (error) {
 			WALog(@"call start: %@", error.localizedDescription);
 			self->_info = @{@"id": @"", @"peer": jid, @"name": name ?: @"", @"incoming": @NO, @"state": @"ended",
@@ -371,6 +376,7 @@ static BOOL SameMedia(NSDictionary *a, NSDictionary *b) {
 }
 
 - (void)hangup {
+	_starting = NO;
 	[self stopRinging];
 	[[WAClient shared] post:@"/api/call/hangup" params:nil completion:^(id json, NSError *error) {
 		[self updateWithInfo:json];

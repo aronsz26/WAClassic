@@ -3,6 +3,7 @@
 set -euo pipefail
 VERSION=$1
 IOS4=${IOS4:-0} # 1: the iPhone 3GS build (iOS 4.3, with app/ios4's ARC runtime and iOS 5/6 replacements)
+DEV=${DEV:-0} # 1: dev build with app/dev, same bundle id and data folder as the normal app
 SDK=$HOME/builds/sdk/iPhoneOS9.3-armv7.sdk
 CC=$HOME/toolchains/bin/ios-clang
 LDID=$HOME/theos/toolchain/linux/iphone/bin/ldid
@@ -20,8 +21,16 @@ if [ "$IOS4" = 1 ]; then
          -DWA_IOS4=1 -Xclang -fobjc-runtime-has-weak -include app/ios4/WAIOS4Prefix.h)
   SDKVERSION=()
 fi
+DEBVER=$VERSION
+if [ "$DEV" = 1 ]; then
+  PKG=com.aronsz26.wa4s-dev NAME="WA Classic Dev" OTHER="com.aronsz26.wa4s, com.aronsz26.wa4s-ios4"
+  DEBVER="$VERSION+dev${DEV_BUILD%+}"
+  FLAGS+=(-DWA_DEV=1 "-DWA_DEV_BUILD=\"$DEV_BUILD\"" "-DWA_DEV_COMMIT=\"$DEV_COMMIT\"" "-DWA_DEV_DATE=\"$DEV_DATE\"")
+fi
 rm -rf obj && mkdir -p obj
-for f in app/*.m; do
+SOURCES=(app/*.m)
+[ "$DEV" = 1 ] && SOURCES+=(app/dev/*.m)
+for f in "${SOURCES[@]}"; do
   "$CC" "${FLAGS[@]}" -c "$f" -o "obj/$(basename "$f").o" 2>&1 | grep -v 'built for iOS Simulator' || true
   test -f "obj/$(basename "$f").o"
 done
@@ -46,6 +55,9 @@ if [ "$IOS4" = 1 ]; then
   plutil() { python3 -c "import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,'rb')); d['MinimumOSVersion']='4.3'; plistlib.dump(d,open(p,'wb'))" "$1"; }
   plutil layout/Applications/WA4S.app/Info.plist
 fi
+if [ "$DEV" = 1 ]; then
+  python3 -c "import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,'rb')); d['CFBundleDisplayName']='WA Dev'; plistlib.dump(d,open(p,'wb'))" layout/Applications/WA4S.app/Info.plist
+fi
 cp WA4S layout/Applications/WA4S.app/WA4S
 # info.plist without the version, so postinst only runs uicache when it really changed
 python3 -c "import plistlib,sys,hashlib; d=plistlib.load(open(sys.argv[1],'rb')); [d.pop(k,None) for k in ('CFBundleVersion','CFBundleShortVersionString')]; print(hashlib.sha1(repr(sorted(d.items())).encode()).hexdigest())" layout/Applications/WA4S.app/Info.plist > layout/Applications/WA4S.app/.infosig
@@ -69,7 +81,7 @@ printf '{ Filter = { Bundles = ( "com.apple.springboard" ); }; }\n' > $TW/WACall
 cat > layout/DEBIAN/control <<CTRL
 Package: $PKG
 Name: $NAME
-Version: $VERSION
+Version: $DEBVER
 Architecture: iphoneos-arm
 Description: Unofficial WhatsApp client for iOS 4 to 6, through your own WA Classic bridge (linked device). Not affiliated with WhatsApp or Meta.
 Maintainer: aronsz26
@@ -118,5 +130,5 @@ exit 0
 POST
 chmod 755 layout/DEBIAN/postinst layout/Applications/WA4S.app/WA4S
 find layout -type d -exec chmod 755 {} +
-dpkg-deb --root-owner-group -Zgzip -b layout "${PKG}_${VERSION}_iphoneos-arm.deb" >/dev/null
+dpkg-deb --root-owner-group -Zgzip -b layout "${PKG}_${DEBVER}_iphoneos-arm.deb" >/dev/null
 echo "WA4S: $(stat -c %s WA4S) Byte"

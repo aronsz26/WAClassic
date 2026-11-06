@@ -9,6 +9,9 @@
 #import "WAUtil.h"
 #import "WASetupViewController.h"
 #import "WABubbles.h"
+#ifdef WA_DEV
+#import "dev/WADev.h"
+#endif
 
 typedef void (^WAAction)(void);
 typedef BOOL (^WAGetter)(void);
@@ -783,6 +786,9 @@ static NSString *OwnWallpaperPath(void) {
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+#ifdef WA_DEV
+	return 5;
+#endif
 	return 4;
 }
 
@@ -826,6 +832,11 @@ static NSString *OwnWallpaperPath(void) {
 			cell.textLabel.text = @"Network Status";
 			cell.detailTextLabel.text = _network;
 			break;
+#ifdef WA_DEV
+		case 4:
+			cell.textLabel.text = @"Debug";
+			break;
+#endif
 		default:
 			cell.textLabel.text = indexPath.row ? @"Help & Bugs" : @"Tell a Friend";
 			break;
@@ -840,6 +851,9 @@ static NSString *OwnWallpaperPath(void) {
 		case 0: next = [[WAProfileController alloc] init]; break;
 		case 1: next = [@[[WAAccountController class], [WAChatSettingsController class], [WANotificationsController class]][indexPath.row] new]; break;
 		case 2: next = [[WASettingsViewController alloc] init]; break;
+#ifdef WA_DEV
+		case 4: next = WADevMenu(); break;
+#endif
 		default:
 			if (indexPath.row) {
 				// Discord doesn't load in old Safari, so hand out the link

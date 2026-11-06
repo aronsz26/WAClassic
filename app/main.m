@@ -19,6 +19,9 @@
 #import "WAVideoCallViewController.h"
 #import "WASetupViewController.h"
 #import "WABubbles.h"
+#ifdef WA_DEV
+#import "dev/WADev.h"
+#endif
 
 @interface WAAppDelegate : UIResponder <UIApplicationDelegate, UITabBarControllerDelegate>
 @property (nonatomic, strong) UIWindow *window;
@@ -54,6 +57,9 @@ static UINavigationController *Nav(UIViewController *root) {
 	}];
 	self.window.rootViewController = tabs;
 	[self.window makeKeyAndVisible];
+#ifdef WA_DEV
+	WADevStart(self.window);
+#endif
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updatesArrived:)
 		name:WAClientUpdatesNotification object:nil];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(openChatRequested:)

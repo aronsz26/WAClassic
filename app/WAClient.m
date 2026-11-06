@@ -2,6 +2,9 @@
 #import <SystemConfiguration/SystemConfiguration.h>
 #import "WAClient.h"
 #import "WAUtil.h"
+#ifdef WA_DEV
+#import "dev/WADev.h"
+#endif
 
 NSString *const WAClientUpdatesNotification = @"WAClientUpdatesNotification";
 NSString *const WAClientServerChangedNotification = @"WAClientServerChangedNotification";
@@ -24,6 +27,9 @@ BOOL WAPinMatches(SecTrustRef trust, NSString *pin) {
 @property (nonatomic, copy) void (^completion)(NSData *data, NSInteger status, NSError *error);
 @property (nonatomic, strong) NSMutableData *data;
 @property (nonatomic) NSInteger status;
+#ifdef WA_DEV
+@property (nonatomic) NSUInteger sentBytes;
+#endif
 @end
 
 @implementation WAConnection
@@ -36,6 +42,9 @@ static NSMutableSet *running;
 	c.pin = pin;
 	c.completion = completion;
 	c.data = [NSMutableData data];
+#ifdef WA_DEV
+	c.sentBytes = request.HTTPBody.length;
+#endif
 	[running addObject:c];
 	[NSURLConnection connectionWithRequest:request delegate:c];
 }
@@ -77,11 +86,17 @@ static NSMutableSet *running;
 }
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+#ifdef WA_DEV
+	WADevCountRequest(self.data.length, self.sentBytes, self.status >= 400);
+#endif
 	self.completion(self.data, self.status, nil);
 	[running removeObject:self];
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
+#ifdef WA_DEV
+	WADevCountRequest(0, self.sentBytes, YES);
+#endif
 	self.completion(nil, 0, error);
 	[running removeObject:self];
 }

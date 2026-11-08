@@ -349,7 +349,10 @@
 	// tick/mic icon
 	UIImage *icon = nil;
 	if ([kind isEqualToString:@"audio"]) icon = WAImg(fromMe ? @"MicChatsBlue" : @"MicChats");
-	else if (fromMe && ![kind isEqualToString:@"call"]) icon = WAImg([chat[@"lastStatus"] intValue] >= 2 ? @"mark_d" : @"mark_s");
+	else if (fromMe && ![kind isEqualToString:@"call"]) {
+		int status = [chat[@"lastStatus"] intValue];
+		icon = status >= 3 && !group ? WAReadTick() : WAImg(status >= 2 ? @"mark_d" : @"mark_s");
+	}
 	cell.statusIcon.image = icon;
 	cell.statusIcon.hidden = icon == nil;
 

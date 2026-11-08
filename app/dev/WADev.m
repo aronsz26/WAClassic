@@ -1,7 +1,9 @@
 #import <QuartzCore/QuartzCore.h>
 #import "WADev.h"
+#import "WACallsViewController.h"
 #import "../WAClient.h"
 #import "../WASettingsPages.h"
+#import "../WAStatusViewController.h"
 #import "../WAPrefs.h"
 #import "../WAUtil.h"
 
@@ -72,6 +74,34 @@ static void ShowCorner(void) {
 	[[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
+#pragma mark - Second tab
+
+static NSString *const kStatusTabKey = @"devStatusTab";
+
+static BOOL StatusTabOn(void) {
+	return [[NSUserDefaults standardUserDefaults] boolForKey:kStatusTabKey];
+}
+
+UIViewController *WADevSecondTab(void) {
+	if (StatusTabOn()) return [[WAStatusViewController alloc] init];
+	return [[WACallsViewController alloc] init];
+}
+
+// swap it live, the other tabs stay as they are
+static void SetStatusTab(BOOL on) {
+	NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+	[d setBool:on forKey:kStatusTabKey];
+	[d synchronize];
+	UITabBarController *tabs = (UITabBarController *)mainWindow.rootViewController;
+	UIViewController *root = WADevSecondTab();
+	UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:root];
+	nav.tabBarItem = root.tabBarItem;
+	NSMutableArray *list = [tabs.viewControllers mutableCopy];
+	list[1] = nav;
+	tabs.viewControllers = list;
+	WALog(@"dev: second tab is %@", on ? @"status" : @"calls");
+}
+
 #pragma mark - Menu
 
 @interface WADevMenuController : WATableController
@@ -100,8 +130,9 @@ static void ShowCorner(void) {
 			@{@"title": @"Manual Tests", @"disclosure": @YES, @"action": ^{ open(WADevManualPage()); }},
 			@{@"title": @"Log", @"disclosure": @YES, @"action": ^{ open(WADevLogPage()); }},
 		]},
-		@{@"header": @"Switches", @"footer": @"Video calls are hidden in the normal app.", @"rows": @[
+		@{@"header": @"Switches", @"footer": @"Video calls are hidden in the normal app. Status Tab shows Status again instead of Calls.", @"rows": @[
 			@{@"title": @"Video Calls", @"switch": WAPrefVideoCalls},
+			@{@"title": @"Status Tab", @"on": ^BOOL{ return StatusTabOn(); }, @"toggle": ^(BOOL on){ SetStatusTab(on); }},
 		]},
 	];
 }
@@ -144,10 +175,23 @@ static void Show(UIViewController *page) {
 	[top presentViewController:commandNav animated:NO completion:nil];
 }
 
+// calls = open the tab, callsmissed/callsall/callsnew/callsedit = do that there
+static void CallsCommand(NSString *what) {
+	UITabBarController *tabs = (UITabBarController *)mainWindow.rootViewController;
+	tabs.selectedIndex = 1;
+	UINavigationController *nav = tabs.viewControllers[1];
+	[nav popToRootViewControllerAnimated:NO];
+	WACallsViewController *calls = (WACallsViewController *)nav.viewControllers[0];
+	// status tab switched back on
+	if (what.length > 5 && [calls isKindOfClass:[WACallsViewController class]]) [calls devCommand:[what substringFromIndex:5]];
+}
+
 static void Command(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef info) {
 	NSString *what = [(__bridge NSString *)name pathExtension];
 	WALog(@"dev: command %@", what);
-	if ([what isEqualToString:@"menu"]) Show(nil);
+	if ([what hasPrefix:@"calls"]) CallsCommand(what);
+	else if ([what isEqualToString:@"statustab"]) SetStatusTab(!StatusTabOn());
+	else if ([what isEqualToString:@"menu"]) Show(nil);
 	else if ([what isEqualToString:@"tests"]) Show(WADevTestsPage(YES));
 	else if ([@[@"message", @"clear", @"ring", @"hangup", @"banner"] containsObject:what]) {
 		if (!commandManual) commandManual = WADevManualPage();
@@ -184,7 +228,8 @@ void WADevStart(UIWindow *window) {
 	[nc addObserverForName:WAClientNetworkChangedNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
 		WADevCount.networkChanges++;
 	}];
-	for (NSString *what in @[@"menu", @"tests", @"stats", @"manual", @"log", @"close", @"message", @"clear", @"ring", @"hangup", @"banner"]) {
+	for (NSString *what in @[@"menu", @"tests", @"stats", @"manual", @"log", @"close", @"message", @"clear", @"ring", @"hangup", @"banner",
+		@"calls", @"callsall", @"callsmissed", @"callsnew", @"callsedit", @"statustab"]) {
 		NSString *name = [@"com.aronsz26.wa4s.dev." stringByAppendingString:what];
 		CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, Command, (__bridge CFStringRef)name, NULL,
 			CFNotificationSuspensionBehaviorDeliverImmediately);

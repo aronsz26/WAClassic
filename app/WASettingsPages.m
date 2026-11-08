@@ -9,6 +9,7 @@
 #import "WAUtil.h"
 #import "WASetupViewController.h"
 #import "WABubbles.h"
+#import "WADiag.h"
 #ifdef WA_DEV
 #import "dev/WADev.h"
 #endif
@@ -394,6 +395,19 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 					}];
 				}}]}];
 	}
+	[sections addObject:@{@"footer": @"Once a day: iPhone model, iOS and app version, bridge version and system, language, crash reports and error codes. Never messages, contacts, numbers or names. Turning it off deletes what was sent.",
+		@"rows": @[@{@"title": @"Send Diagnostics", @"on": ^BOOL { return WAPrefBool(WAPrefDiagnostics); },
+			@"toggle": ^(BOOL on) {
+				NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+				[d setBool:YES forKey:@"diagAsked"];
+				[d setBool:on forKey:WAPrefDiagnostics];
+				if (on) {
+					[d setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"diagCrashSeen"];
+					[[WADiag shared] sendIfDue];
+				} else {
+					[[WADiag shared] turnedOff];
+				}
+			}}]}];
 	self.sections = sections;
 }
 

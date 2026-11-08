@@ -11,7 +11,7 @@ extern NSString *const WAPrefWallpaper; // nil = default
 extern NSString *const WAPrefAutoPhotos, *const WAPrefAutoAudio, *const WAPrefAutoVideos;
 extern NSString *const WAPrefOptimizeVideo; // off / cellular / always
 extern NSString *const WAPrefBubbleOut, *const WAPrefBubbleIn;
-// video calls hidden for 1.0, debug switch "videoCalls" (not in settings)
+// video calls only in WA Dev (debug switch "videoCalls"), always off in the normal app
 extern NSString *const WAPrefVideoCalls;
 extern NSString *const WAPrefsChangedNotification;
 

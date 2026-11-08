@@ -47,6 +47,7 @@ func runDemo(listen string) {
 		return map[string]any{"version": version, "paired": true, "connected": true, "loggedIn": true, "upd": d.seq, "jid": demoMe, "pushName": "Alex Carter"}
 	})
 	j("/api/chats", func(*http.Request) any { return map[string]any{"chats": d.chats(), "upd": d.seq} })
+	j("/api/calls", func(*http.Request) any { return map[string]any{"calls": d.callLog()} })
 	j("/api/messages", func(r *http.Request) any {
 		if r.URL.Query().Get("before") != "" && r.URL.Query().Get("before") != "0" {
 			return map[string]any{"messages": []Message{}}
@@ -344,6 +345,25 @@ func (d *demoServer) build() {
 
 	add(liam, liam, day(6, 10, 0), "text", "Happy birthday! 🎈 Have a great day", seen, 0)
 	add(liam, "", day(6, 10, 12), "text", "Thank you so much!", read, 0)
+}
+
+// callLog: made up calls tab, not in the chats so old screenshots stay the same.
+func (d *demoServer) callLog() []CallEntry {
+	now := time.Now()
+	calls := []CallEntry{}
+	add := func(jid, name string, ago time.Duration, fromMe bool, text string, secs int) {
+		calls = append(calls, CallEntry{ID: "democall" + strconv.Itoa(len(calls)), Peer: jid, Name: name, FromMe: fromMe,
+			TS: now.Add(-ago).Unix(), Text: text, Secs: secs})
+	}
+	add("15550101@s.whatsapp.net", "Emma Wilson", 12*time.Minute, true, "answered", 245)
+	add("15550105@s.whatsapp.net", "Sophie Martin", 95*time.Minute, false, "missed", 0)
+	add("15550105@s.whatsapp.net", "Sophie Martin", 110*time.Minute, false, "missed", 0)
+	add("15550102@s.whatsapp.net", "Jake Miller", 5*time.Hour, false, "answered", 62)
+	add("15550106@s.whatsapp.net", "Mom", 26*time.Hour, true, "unanswered", 0)
+	add("15550104@s.whatsapp.net", "Daniel Lee", 30*time.Hour, false, "declined", 0)
+	add("15550103@s.whatsapp.net", "Olivia Brown", 3*24*time.Hour, true, "answered", 1340)
+	add("15550107@s.whatsapp.net", "Liam Turner", 6*24*time.Hour, false, "elsewhere", 0)
+	return calls
 }
 
 // setCall updates the fake call and wakes long polls.

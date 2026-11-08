@@ -1,5 +1,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "WASetupViewController.h"
+#import "WADiag.h"
+#import "WAPrefs.h"
 #import "WASettingsViewController.h"
 #import "WAClient.h"
 #import "WAAssets.h"
@@ -557,8 +559,14 @@ static UIFont *HowFont(void) {
 	return [UIFont fontWithName:@"Helvetica" size:15];
 }
 
+@interface WAHowItWorksViewController () <UIScrollViewDelegate>
+@end
+
 @implementation WAHowItWorksViewController {
 	UIScrollView *_scroll;
+	UISwitch *_diag;
+	UIButton *_go;
+	UIView *_track, *_thumb;
 }
 
 - (void)loadView {
@@ -584,75 +592,147 @@ static UIFont *HowFont(void) {
 	[v addSubview:box];
 	_scroll = [[UIScrollView alloc] initWithFrame:box.bounds];
 	_scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	_scroll.delegate = self;
+	_scroll.showsVerticalScrollIndicator = NO;
 	[box addSubview:_scroll];
+	_track = [[UIView alloc] initWithFrame:CGRectMake(box.bounds.size.width - 11, 8, 6, box.bounds.size.height - 16)];
+	_track.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleHeight;
+	_track.backgroundColor = [UIColor colorWithWhite:0 alpha:0.07f];
+	_track.layer.cornerRadius = 3;
+	[box addSubview:_track];
+	_thumb = [[UIView alloc] initWithFrame:CGRectZero];
+	_thumb.backgroundColor = [UIColor colorWithWhite:0 alpha:0.38f];
+	_thumb.layer.cornerRadius = 3;
+	[box addSubview:_thumb];
 	[self fillScroll];
 
 	UIButton *go = GreenButton(@"Agree and Continue", CGRectMake(floorf((w - 258) / 2), h - 53, 258, 41));
 	go.autoresizingMask |= UIViewAutoresizingFlexibleTopMargin;
 	[go addTarget:self action:@selector(next) forControlEvents:UIControlEventTouchUpInside];
+	// read to the end first
+	go.enabled = NO;
+	go.alpha = 0.5f;
+	_go = go;
 	[v addSubview:go];
 }
 
-- (void)fillScroll {
-	NSArray *sections = @[
-		@{@"title": @"How WA Classic works", @"rows": @[
-			@"WA Classic is unofficial. It isn't made by or connected to WhatsApp or Meta.",
-			@"It runs through your own bridge, a small program on your computer. The bridge is linked to WhatsApp like WhatsApp Web.",
-			@"There is no WA Classic server. Your messages go from WhatsApp to your bridge and then to this iPhone.",
-			@"The bridge stores your messages unencrypted, so only run it on a computer you trust.",
-			@"Keep the bridge running. While it's off or asleep, nothing arrives.",
-			@"Your phone has to come online about every two weeks, or WhatsApp unlinks the bridge.",
-			@"Using WA Classic may break WhatsApp's terms of service, and your account could be banned. If you can't risk that, don't link your main account.",
-		]},
-		@{@"title": @"Setup help", @"rows": @[
-			@"Set up your bridge first. The guide is on guide.waclassic.com, open it on your computer.",
-			@"Stuck? Ask on our Discord: discord.gg/HaTErjRdbk",
-		]},
-	];
-	CGFloat width = _scroll.bounds.size.width, left = 14, indent = 14, y = 12;
-	CGFloat textWidth = width - left - indent - 14;
-	for (NSDictionary *section in sections) {
-		UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(left, y, width - left * 2, 22)];
-		title.text = section[@"title"];
-		title.font = [UIFont fontWithName:@"Helvetica-Bold" size:16];
-		title.textColor = WAColor(0x4C566C);
-		title.backgroundColor = [UIColor clearColor];
-		[_scroll addSubview:title];
-		y += 28;
-		for (NSString *text in section[@"rows"]) {
-			UILabel *dot = [[UILabel alloc] initWithFrame:CGRectMake(left, y, indent, 18)];
-			dot.text = @"\u2022";
-			dot.font = HowFont();
-			dot.backgroundColor = [UIColor clearColor];
-			[_scroll addSubview:dot];
-			CGSize fit = [text sizeWithFont:HowFont() constrainedToSize:CGSizeMake(textWidth, 400)
-				lineBreakMode:NSLineBreakByWordWrapping];
-			UILabel *row = [[UILabel alloc] initWithFrame:CGRectMake(left + indent, y, textWidth, ceilf(fit.height))];
-			row.text = text;
-			row.font = HowFont();
-			row.numberOfLines = 0;
-			row.backgroundColor = [UIColor clearColor];
-			[_scroll addSubview:row];
-			y += ceilf(fit.height) + 9;
-		}
-		y += 10;
+- (void)scrollViewDidScroll:(UIScrollView *)scroll {
+	[self updateBar];
+	[self checkRead];
+}
+
+- (void)checkRead {
+	if (_go.enabled) return;
+	if (_scroll.contentOffset.y + _scroll.bounds.size.height >= _scroll.contentSize.height - 12) {
+		_go.enabled = YES;
+		[UIView animateWithDuration:0.2 animations:^{ self->_go.alpha = 1; }];
 	}
+}
+
+// terms style: numbered points, read to the end before Agree and Continue works
+- (void)fillScroll {
+	NSArray *points = @[
+		@[@"About WA Classic", @"WA Classic is unofficial. It isn't made by or connected to WhatsApp or Meta."],
+		@[@"Your bridge", @"WA Classic runs through your own bridge, a small program on your computer. It is linked to WhatsApp like WhatsApp Web. There is no WA Classic server: your messages go from WhatsApp to your bridge and then to this iPhone.",
+			@"The bridge stores your messages unencrypted, so only run it on a computer you trust."],
+		@[@"Staying connected", @"Keep the bridge running. While it's off or asleep, nothing arrives.",
+			@"Your phone has to come online about every two weeks, or WhatsApp unlinks the bridge."],
+		@[@"Your account", @"Using WA Classic may break WhatsApp's terms of service, and your account could be banned. If you can't risk that, don't link your main account."],
+		@[@"Updates", @"WA Classic asks update.waclassic.com every few hours if there's a new version. That request contains nothing about you."],
+	];
+	CGFloat width = _scroll.bounds.size.width, left = 14, right = 22, y = 14;
+	CGFloat textWidth = width - left - right;
+	y = [self addText:@"Please read these points to the end. Agree and Continue works once you've scrolled down."
+		font:[UIFont fontWithName:@"Helvetica-Oblique" size:14] color:WAColor(0x6D6D72) y:y width:textWidth left:left] + 16;
+	NSUInteger number = 1;
+	for (NSArray *point in points) {
+		y = [self addHeading:[NSString stringWithFormat:@"%lu. %@", (unsigned long)number++, point[0]] y:y width:textWidth left:left];
+		for (NSString *text in [point subarrayWithRange:NSMakeRange(1, point.count - 1)]) {
+			y = [self addText:text font:HowFont() color:[UIColor blackColor] y:y width:textWidth left:left] + 8;
+		}
+		y += 8;
+	}
+	y = [self addDiagnosticsAt:y number:number++ width:textWidth left:left];
+	y = [self addHeading:[NSString stringWithFormat:@"%lu. Help", (unsigned long)number] y:y width:textWidth left:left];
+	y = [self addText:@"Set up your bridge first. The guide is on guide.waclassic.com, open it on your computer. Stuck? Ask on our Discord: discord.gg/HaTErjRdbk"
+		font:HowFont() color:[UIColor blackColor] y:y width:textWidth left:left] + 16;
+	y = [self addText:@"By tapping Agree and Continue you accept points 1 to 5. Diagnostics stay off unless you turn them on. Privacy policy: waclassic.com/legal"
+		font:[UIFont fontWithName:@"Helvetica" size:13] color:WAColor(0x6D6D72) y:y width:textWidth left:left] + 14;
 	_scroll.contentSize = CGSizeMake(width, y);
+	[self updateBar];
+}
+
+- (CGFloat)addHeading:(NSString *)text y:(CGFloat)y width:(CGFloat)width left:(CGFloat)left {
+	UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(left, y, width, 20)];
+	title.text = text;
+	title.font = [UIFont fontWithName:@"Helvetica-Bold" size:15];
+	title.textColor = WAColor(0x4C566C);
+	title.backgroundColor = [UIColor clearColor];
+	[_scroll addSubview:title];
+	return y + 25;
+}
+
+- (CGFloat)addText:(NSString *)text font:(UIFont *)font color:(UIColor *)color y:(CGFloat)y width:(CGFloat)width left:(CGFloat)left {
+	CGSize fit = [text sizeWithFont:font constrainedToSize:CGSizeMake(width, 600) lineBreakMode:NSLineBreakByWordWrapping];
+	UILabel *row = [[UILabel alloc] initWithFrame:CGRectMake(left, y, width, ceilf(fit.height))];
+	row.text = text;
+	row.font = font;
+	row.textColor = color;
+	row.numberOfLines = 0;
+	row.backgroundColor = [UIColor clearColor];
+	[_scroll addSubview:row];
+	return y + ceilf(fit.height);
+}
+
+// optional, off unless switched on. agreeing below doesn't turn it on
+- (CGFloat)addDiagnosticsAt:(CGFloat)y number:(NSUInteger)number width:(CGFloat)width left:(CGFloat)left {
+	y = [self addHeading:[NSString stringWithFormat:@"%lu. Diagnostics (optional)", (unsigned long)number] y:y width:width left:left];
+	y = [self addText:@"Helps find bugs faster. Once a day: your iPhone model, iOS and app version, bridge version and system, language, crash reports and error codes. Never messages, contacts, numbers or names. You can change it later in Settings › Chat Settings › Advanced."
+		font:HowFont() color:[UIColor blackColor] y:y width:width left:left] + 10;
+	_diag = [[UISwitch alloc] init];
+	_diag.on = WAPrefBool(WAPrefDiagnostics);
+	CGRect sf = _diag.frame;
+	sf.origin = CGPointMake(left + width - sf.size.width, y);
+	_diag.frame = sf;
+	[_scroll addSubview:_diag];
+	UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(left, y, sf.origin.x - left - 8, sf.size.height)];
+	name.text = @"Send Diagnostics";
+	name.font = [UIFont boldSystemFontOfSize:15];
+	name.backgroundColor = [UIColor clearColor];
+	[_scroll addSubview:name];
+	return y + sf.size.height + 18;
+}
+
+// always visible scroll bar, ios only flashes its own
+- (void)updateBar {
+	CGFloat content = _scroll.contentSize.height, visible = _scroll.bounds.size.height;
+	BOOL fits = content <= visible + 1;
+	_track.hidden = _thumb.hidden = fits;
+	if (fits) return;
+	CGRect track = _track.frame;
+	CGFloat h = MAX(34, track.size.height * visible / content);
+	CGFloat progress = MIN(MAX(_scroll.contentOffset.y / (content - visible), 0), 1);
+	_thumb.frame = CGRectMake(track.origin.x, track.origin.y + (track.size.height - h) * progress, track.size.width, h);
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"How It Works";
+	self.title = @"Terms";
 	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Back"
 		style:UIBarButtonItemStyleBordered target:nil action:nil];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
 	[super viewDidAppear:animated];
-	[_scroll flashScrollIndicators];
+	[self updateBar];
+	[self checkRead]; // fits without scrolling on a big screen
 }
 
 - (void)next {
+	NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+	[d setBool:YES forKey:@"diagAsked"]; // asked here, no popup later
+	if (_diag.on && ![d boolForKey:WAPrefDiagnostics]) [d setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"diagCrashSeen"];
+	[d setBool:_diag.on forKey:WAPrefDiagnostics];
 	// new install: bridge first, then qr
 	if (![WAClient shared].configured) {
 		WAConnectViewController *connect = [[WAConnectViewController alloc] init];

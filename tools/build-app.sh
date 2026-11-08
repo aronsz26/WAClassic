@@ -1,7 +1,7 @@
 #!/bin/bash
 # builds WA4S.app (armv7, ios 6) on debian-home -> packages/*.deb
 # IOS4=1 for the 3gs build (com.aronsz26.wa4s-ios4)
-# DEV=1 for the dev build, iphone 5 only (com.aronsz26.wa4s-dev, see tools/install-dev.sh)
+# DEV=1 for the dev build (com.aronsz26.wa4s-dev, with IOS4=1 com.aronsz26.wa4s-dev-ios4, see tools/install-dev.sh)
 # toolchain: ios-clang + 9.3 sdk + ldid, same as encore/untisfix
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -16,12 +16,12 @@ PKG=com.aronsz26.wa4s
 DEBVER=$VERSION
 DEVENV=
 if [ "$DEV" = 1 ]; then
-  [ "$IOS4" = 1 ] && { echo "dev builds are ios 6 only"; exit 1; }
   # build number = commits, + when the tree has changes
   BUILD=$(git rev-list --count HEAD)
   COMMIT=$(git rev-parse --short HEAD)
   [ -n "$(git status --porcelain -- app tools)" ] && BUILD="$BUILD+"
   PKG=com.aronsz26.wa4s-dev
+  [ "$IOS4" = 1 ] && PKG=com.aronsz26.wa4s-dev-ios4
   DEBVER="$VERSION+dev${BUILD%+}"
   DEVENV="DEV=1 DEV_BUILD='$BUILD' DEV_COMMIT='$COMMIT' DEV_DATE='$(date '+%d.%m.%Y %H:%M')'"
 fi

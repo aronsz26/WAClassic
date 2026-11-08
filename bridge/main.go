@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -190,6 +191,7 @@ func main() {
 	api("/api/group/subject", b.apiGroupSubject)
 	api("/api/group/participants", b.apiGroupParticipants)
 	api("/api/group/leave", b.apiGroupLeave)
+	api("/api/calls", b.calls.apiList)
 	api("/api/call/state", b.calls.apiState)
 	api("/api/call/start", b.calls.apiStart)
 	api("/api/call/answer", b.calls.apiAnswer)
@@ -241,6 +243,11 @@ func (b *Bridge) apiStatus(w http.ResponseWriter, r *http.Request) {
 		"connected": b.cli.IsConnected(),
 		"loggedIn":  b.cli.IsLoggedIn(),
 		"upd":       b.store.upd.Load(),
+		// for the app's diagnostics (only sent if the user said yes)
+		"platform": runtime.GOOS,
+		"arch":     runtime.GOARCH,
+		"kernel":   kernelRelease(),
+		"docker":   fileExists("/.dockerenv"),
 	}
 	if id := b.cli.Store.ID; id != nil {
 		out["jid"] = id.ToNonAD().String()
@@ -524,4 +531,18 @@ func (b *Bridge) qrPNG(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(png)
+}
+
+// e.g. 6.10.14-linuxkit (docker desktop) or 6.1.0-rpi7-rpi-v8, says where the bridge runs
+func kernelRelease() string {
+	b, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

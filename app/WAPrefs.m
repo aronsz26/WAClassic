@@ -38,7 +38,11 @@ BOOL WAPrefBool(NSString *key) {
 }
 
 BOOL WAVideoCallsEnabled(void) {
+#ifdef WA_DEV
 	return WAPrefBool(WAPrefVideoCalls);
+#else
+	return NO; // the dev switch stays in the prefs after going back to the normal app
+#endif
 }
 
 NSString *WAPrefString(NSString *key) {
@@ -62,8 +66,9 @@ NSString *WASoundFile(NSString *name) {
 	if ([name isEqualToString:@"None"]) return nil;
 	if ([name isEqualToString:@"Default"]) return UILocalNotificationDefaultSoundName;
 	NSString *file = [[name stringByReplacingOccurrencesOfString:@" " withString:@""] stringByAppendingPathExtension:@"caf"];
-	// sounds get copied in at install
-	if ([[NSFileManager defaultManager] fileExistsAtPath:[[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:file]]) return file;
+	// empty placeholder until the bridge has the sounds, ios plays nothing at all for those
+	NSString *path = [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:file];
+	if ([[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL].fileSize > 0) return file;
 	return UILocalNotificationDefaultSoundName;
 }
 

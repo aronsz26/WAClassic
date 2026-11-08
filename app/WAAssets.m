@@ -28,6 +28,25 @@ UIImage *WAImg(NSString *name) {
 	return img;
 }
 
+UIImage *WAReadTick(void) {
+	UIImage *src = WAImg(@"mark_d");
+	UIImage *img = [imgCache objectForKey:@"mark_read"];
+	if (img || !src) return img ?: src;
+	CGRect r = {CGPointZero, src.size};
+	UIGraphicsBeginImageContextWithOptions(src.size, NO, src.scale);
+	[src drawInRect:r];
+	// keeps the shading of the original tick
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetBlendMode(ctx, kCGBlendModeHue);
+	[WAColor(0x1E90FF) setFill];
+	CGContextFillRect(ctx, r);
+	[src drawInRect:r blendMode:kCGBlendModeDestinationIn alpha:1];
+	img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	if (img) [imgCache setObject:img forKey:@"mark_read"];
+	return img ?: src;
+}
+
 UIImage *WASystemImg(NSString *base) {
 	NSArray *suffixes = [UIScreen mainScreen].scale > 1 ? @[@"@2x~iphone.png", @"@2x.png", @"~iphone.png", @".png"]
 		: @[@"~iphone.png", @".png", @"@2x~iphone.png", @"@2x.png"];
@@ -127,7 +146,7 @@ static void MakeRingtone(void) {
 		if (!ok) [[NSFileManager defaultManager] removeItemAtPath:tmp error:NULL];
 		dispatch_async(dispatch_get_main_queue(), ^{
 			WALog(@"assets: ringtone %@", ok ? @"made" : @"failed");
-			if (ok) CopyIntoBundle();
+			CopyIntoBundle(); // the other sounds don't need the ringtone
 		});
 	});
 }
@@ -359,7 +378,13 @@ static UIImage *Fallback(NSString *name) {
 			[WAColor(0xA5A9B0) setFill];
 			UIRectFill(CGRectMake(0, 0, 2, 0.5));
 		}); },
-		@"ChatInputFieldBG": ^{ return Field(CGSizeMake(40, 40), 15); },
+		@"ChatInputFieldBG": ^{ return Draw(CGSizeMake(40, 40), ^(CGContextRef ctx) {
+			UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(4.5, 8.5, 31, 24) cornerRadius:12];
+			[[UIColor whiteColor] setFill];
+			[path fill];
+			[WAColor(0xA6ABB3) setStroke];
+			[path stroke];
+		}); },
 		@"TextFieldBg": ^{ return Field(CGSizeMake(75, 45), 8); },
 		@"RedButton": ^{ return RedButton(NO); },
 		@"RedButtonPressed": ^{ return RedButton(YES); },

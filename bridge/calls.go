@@ -165,6 +165,40 @@ func (c *Calls) record(info CallInfo, started int64) {
 	}
 }
 
+// CallEntry is a row of the calls tab. text and secs like the chat entry.
+type CallEntry struct {
+	ID     string `json:"id"`
+	Peer   string `json:"peer"`
+	Name   string `json:"name"`
+	FromMe bool   `json:"fromMe"`
+	TS     int64  `json:"ts"`
+	Text   string `json:"text"`
+	Secs   int    `json:"secs,omitempty"`
+}
+
+// apiList: recent calls for the calls tab, one chat name lookup per person.
+func (c *Calls) apiList(w http.ResponseWriter, r *http.Request) {
+	msgs, err := c.b.store.CallLog(200)
+	if err != nil {
+		httpErr(w, err, 500)
+		return
+	}
+	names := map[string]string{}
+	calls := make([]CallEntry, 0, len(msgs))
+	for _, m := range msgs {
+		name, known := names[m.Chat]
+		if !known {
+			if name = c.b.store.ChatName(m.Chat); name == "" {
+				jid, _ := types.ParseJID(m.Chat)
+				name = c.b.displayName(r.Context(), jid)
+			}
+			names[m.Chat] = name
+		}
+		calls = append(calls, CallEntry{ID: m.ID, Peer: m.Chat, Name: name, FromMe: m.FromMe, TS: m.TS, Text: m.Text, Secs: m.Secs})
+	}
+	writeJSON(w, map[string]any{"calls": calls})
+}
+
 func (c *Calls) bump() {
 	c.mu.Lock()
 	c.info.Upd = c.b.store.next()

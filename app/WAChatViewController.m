@@ -453,11 +453,12 @@ static NSString *DayKey(long long ts) {
 	[_attachButton addTarget:self action:@selector(attachTapped) forControlEvents:UIControlEventTouchUpInside];
 	[_bar addSubview:_attachButton];
 
-	_fieldBG = [[UIImageView alloc] initWithFrame:CGRectMake(40, 4, w - 40 - 40, 32)];
-	_fieldBG.image = WAStretch(@"ChatInputFieldBG", 16, 16, 16, 16);
+	// the image is 40 high with bar around the field, never squeeze it
+	_fieldBG = [[UIImageView alloc] initWithFrame:CGRectMake(36, 0, w - 36 - 36, kBarHeight)];
+	_fieldBG.image = WAStretch(@"ChatInputFieldBG", 20, 20, 19, 19);
 	_fieldBG.userInteractionEnabled = YES;
 	[_bar addSubview:_fieldBG];
-	_field = [[UITextField alloc] initWithFrame:CGRectInset(_fieldBG.bounds, 10, 4)];
+	_field = [[UITextField alloc] initWithFrame:CGRectMake(14, 8, _fieldBG.bounds.size.width - 28, 25)];
 	_field.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	_field.borderStyle = _fieldBG.image ? UITextBorderStyleNone : UITextBorderStyleRoundedRect;
 	_field.font = [UIFont systemFontOfSize:16];
@@ -939,7 +940,7 @@ static NSString *DayKey(long long ts) {
 	_sendButton.hidden = !hasText;
 	_micButton.hidden = hasText;
 	CGFloat w = _bar.bounds.size.width;
-	_fieldBG.frame = CGRectMake(40, 4, (hasText ? w - 68 : w - 41) - 40, 32);
+	_fieldBG.frame = CGRectMake(36, 0, (hasText ? w - 64 : w - 37) - 36, kBarHeight);
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -1225,7 +1226,9 @@ static NSString *DayKey(long long ts) {
 	UIImage *tick = nil;
 	if (mine) {
 		int status = [m[@"status"] intValue];
-		tick = WAImg(status == 0 ? @"GrayClockIcon" : (status >= 2 ? @"mark_d" : @"mark_s"));
+		// groups: the first reader already sends read, whatsapp waits for everyone
+		if (status >= 3 && ![_jid hasSuffix:@"@g.us"]) tick = WAReadTick();
+		else tick = WAImg(status == 0 ? @"GrayClockIcon" : (status >= 2 ? @"mark_d" : @"mark_s"));
 	}
 	CGFloat timeW = ceilf([time sizeWithFont:TimeFont()].width);
 	if (!time.length && !tick) return cell;

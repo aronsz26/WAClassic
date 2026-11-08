@@ -1,4 +1,6 @@
 #import "WABackground.h"
+#import "WAUpdate.h"
+#import "WADiag.h"
 #import "WAClient.h"
 #import "WAUtil.h"
 #import "WACall.h"
@@ -51,6 +53,8 @@ NSString *WANotificationText(NSDictionary *m) {
 	[app setKeepAliveTimeout:600 handler:^{
 		WALog(@"keep-alive (socket %@, %.0f s old)", self->_in ? @"open" : @"none", -[self->_openedAt timeIntervalSinceNow]);
 		if (!self->_in || !self->_sent || -[self->_openedAt timeIntervalSinceNow] > 540) [self chooseAndReconnect];
+		[[WAUpdate shared] checkActive:NO];
+		[[WADiag shared] sendIfDue];
 	}];
 	[self reconnect];
 }

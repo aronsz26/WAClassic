@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -152,6 +153,20 @@ func (b *Bridge) groupDetails(ctx context.Context, chat types.JID, info *types.G
 	out["media"] = b.store.MediaCount(chat.String())
 }
 
+// sendAppState retries after a full resync, a bad LTHash means our copy of the state is off.
+func (b *Bridge) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
+	err := b.cli.SendAppState(ctx, patch)
+	if err == nil {
+		return nil
+	}
+	log.Printf("app state %s: %v, resyncing", patch.Type, err)
+	if syncErr := b.cli.FetchAppState(ctx, patch.Type, true, false); syncErr != nil {
+		log.Printf("app state %s: resync: %v", patch.Type, syncErr)
+		return err
+	}
+	return b.cli.SendAppState(ctx, patch)
+}
+
 // apiMute: hours 8/168/8760, -1 forever, 0 unmute. synced with whatsapp.
 func (b *Bridge) apiMute(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -172,7 +187,7 @@ func (b *Bridge) apiMute(w http.ResponseWriter, r *http.Request) {
 		d := time.Duration(hours) * time.Hour
 		patch, until = appstate.BuildMute(chat, true, d), time.Now().Add(d)
 	}
-	if err := b.cli.SendAppState(ctx, patch); err != nil {
+	if err := b.sendAppState(ctx, patch); err != nil {
 		httpErr(w, err, 502)
 		return
 	}

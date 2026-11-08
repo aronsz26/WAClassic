@@ -24,6 +24,10 @@ fi
 DEBVER=$VERSION
 if [ "$DEV" = 1 ]; then
   PKG=com.aronsz26.wa4s-dev NAME="WA Classic Dev" OTHER="com.aronsz26.wa4s, com.aronsz26.wa4s-ios4"
+  if [ "$IOS4" = 1 ]; then
+    PKG=com.aronsz26.wa4s-dev-ios4 NAME="WA Classic Dev for iOS 4 and 5"
+    OTHER="com.aronsz26.wa4s, com.aronsz26.wa4s-ios4, com.aronsz26.wa4s-dev"
+  fi
   DEBVER="$VERSION+dev${DEV_BUILD%+}"
   FLAGS+=(-DWA_DEV=1 "-DWA_DEV_BUILD=\"$DEV_BUILD\"" "-DWA_DEV_COMMIT=\"$DEV_COMMIT\"" "-DWA_DEV_DATE=\"$DEV_DATE\"")
 fi
@@ -54,9 +58,12 @@ cp -r app/Resources layout/Applications/WA4S.app
 if [ "$IOS4" = 1 ]; then
   plutil() { python3 -c "import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,'rb')); d['MinimumOSVersion']='4.3'; plistlib.dump(d,open(p,'wb'))" "$1"; }
   plutil layout/Applications/WA4S.app/Info.plist
+else
+  # ios 6 stretches a prerendered icon over the whole canvas, these have the margin
+  cp app/icon-ios6/Icon.png app/icon-ios6/Icon@2x.png layout/Applications/WA4S.app/
 fi
 if [ "$DEV" = 1 ]; then
-  python3 -c "import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,'rb')); d['CFBundleDisplayName']='WA Dev'; plistlib.dump(d,open(p,'wb'))" layout/Applications/WA4S.app/Info.plist
+  python3 -c "import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,'rb')); d['CFBundleDisplayName']='WA Dev'; d['CFBundleURLTypes']=[{'CFBundleURLName':'com.aronsz26.wa4s.dev','CFBundleURLSchemes':['wadev']}]; plistlib.dump(d,open(p,'wb'))" layout/Applications/WA4S.app/Info.plist
 fi
 cp WA4S layout/Applications/WA4S.app/WA4S
 # info.plist without the version, so postinst only runs uicache when it really changed

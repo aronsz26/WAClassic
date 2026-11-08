@@ -48,7 +48,7 @@ func (b *Bridge) deleteChat(ctx context.Context, chatStr string, everywhere bool
 	}
 	if everywhere {
 		ts, key := b.newestKey(chat)
-		if err := b.cli.SendAppState(ctx, appstate.BuildDeleteChat(chat, ts, key, true)); err != nil {
+		if err := b.sendAppState(ctx, appstate.BuildDeleteChat(chat, ts, key, true)); err != nil {
 			return err
 		}
 	}

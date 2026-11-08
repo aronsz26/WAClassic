@@ -7,6 +7,7 @@
 #import "WAClient.h"
 #import "WAPrefs.h"
 #import "WAUtil.h"
+#import "WADiag.h"
 #import "WAVideoCall.h"
 
 NSString *const WACallChangedNotification = @"WACallChangedNotification";
@@ -234,6 +235,7 @@ static BOOL SameMedia(NSDictionary *a, NSDictionary *b) {
 		[self stopRinging];
 	}
 	if ([state isEqualToString:@"ended"]) {
+		if ([info[@"reason"] length]) [[WADiag shared] record:[@"call end " stringByAppendingString:info[@"reason"]]];
 		[self stopAudio];
 		[self cancelRingNote];
 		if (oldState && ![oldState isEqualToString:@"ringing"]) [self playSystemSound:@"vc~ended"];

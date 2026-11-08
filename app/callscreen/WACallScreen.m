@@ -14,6 +14,11 @@
 #import <objc/message.h>
 #include <dlfcn.h>
 #include <notify.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <mach-o/dyld.h>
 
 #define kDir @"/var/mobile/Library/WA4S"
 #define kTelephonyUI @"/System/Library/PrivateFrameworks/TelephonyUI.framework"
@@ -672,8 +677,11 @@ static void (*OrigMenuUp)(id, SEL, void *);
 static void (*OrigReturnTap)(id, SEL, id);
 static void (*OrigWorkspaceReturn)(id, SEL, id, id, id);
 
+static void CheckScreen(NSString *why);
+
 static void MenuUp(id self, SEL cmd, void *event) {
 	[[WACallScreen shared] homePressed];
+	CheckScreen(@"home button");
 	if (OrigMenuUp) OrigMenuUp(self, cmd, event);
 }
 
@@ -749,8 +757,147 @@ static IMP Hook(const char *cls, const char *sel, IMP replacement) {
 	return m ? method_setImplementation(m, replacement) : NULL;
 }
 
+#pragma mark - Screen size (ios 6)
+
+// springboard posts the screen size for apps in the GSCapabilities shared memory ("screen-dimensions").
+// normal apps ask backboardd themselves in UIApplicationMain, but cydia reads the screen before that,
+// so a wrong or missing entry makes it 320x480 at 1x, small in the top left until a respring.
+// seen right after reboots (springboard's main asks backboardd once and ignores the answer) and
+// after springboard ran for a while (it posts the whole config again on telephony/icon changes).
+// not our bug, but users only notice it after installing us
+static BOOL IsIOS6(void) {
+	return kCFCoreFoundationVersionNumber >= 793 && kCFCoreFoundationVersionNumber < 800;
+}
+
+static void *BKS(const char *name) {
+	void *bks = dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices", RTLD_LAZY);
+	return bks ? dlsym(bks, name) : NULL;
+}
+
+// we run before springboard's main, so wait here until backboardd has the screen (max 5 s)
+static int WaitForScreen(void) {
+	BOOL (*start)(void) = IsIOS6() ? (BOOL (*)(void))BKS("BKSDisplayServicesStart") : NULL;
+	if (!start) return -1;
+	int tries = 0;
+	while (!start() && tries < 50) {
+		usleep(100000);
+		tries++;
+	}
+	return tries;
+}
+
+// real size from backboardd (pixels)
+static BOOL RealScreen(float *w, float *h, float *scale, float *orientation) {
+	static void (*info)(float *, float *, float *, float *);
+	if (!info && IsIOS6()) info = BKS("BKSDisplayServicesGetMainScreenInfo");
+	if (!info) return NO;
+	*w = *h = *scale = *orientation = 0;
+	info(w, h, scale, orientation);
+	return *w >= 1 && *h >= 1 && *scale >= 1;
+}
+
+// what apps get right now: 0 = no screen entry, -1 = no shared memory at all
+static float PostedScale(void) {
+	int fd = shm_open("GSCapabilities", O_RDONLY, 0);
+	if (fd < 0) return -1;
+	float scale = -1;
+	struct stat st;
+	flock(fd, LOCK_SH);
+	if (!fstat(fd, &st) && st.st_size > 4) {
+		void *p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+		if (p != MAP_FAILED) {
+			uint32_t len = *(uint32_t *)p;
+			CFDataRef data = len <= st.st_size - 4 ? CFDataCreate(NULL, (const UInt8 *)p + 4, len) : NULL;
+			CFPropertyListRef plist = data ? CFPropertyListCreateWithData(NULL, data, kCFPropertyListImmutable, NULL, NULL) : NULL;
+			if (plist && CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
+				NSDictionary *dims = [(NSDictionary *)plist objectForKey:@"screen-dimensions"];
+				scale = [dims isKindOfClass:[NSDictionary class]] ? [[dims objectForKey:@"main-screen-scale"] floatValue] : 0;
+			}
+			if (plist) CFRelease(plist);
+			if (data) CFRelease(data);
+			munmap(p, (size_t)st.st_size);
+		}
+	}
+	flock(fd, LOCK_UN);
+	close(fd);
+	return scale;
+}
+
+static void (*OrigPostConfig)(id, SEL);
+static BOOL postingFixed;
+
+// springboard's own copy wrong -> put the real size in (setValue:forCapability: posts it). YES = posted
+static BOOL FixScreenDims(id platform, NSString *why) {
+	SEL infoSel = sel_registerName("infoForCapability:"), setSel = sel_registerName("setValue:forCapability:");
+	float w, h, scale, orientation;
+	if (postingFixed || !RealScreen(&w, &h, &scale, &orientation) || ![platform respondsToSelector:infoSel]
+		|| ![platform respondsToSelector:setSel]) return NO;
+	NSDictionary *dims = ((id (*)(id, SEL, id))objc_msgSend)(platform, infoSel, @"screen-dimensions");
+	if (![dims isKindOfClass:[NSDictionary class]]) dims = nil;
+	if ([[dims objectForKey:@"main-screen-scale"] floatValue] == scale && [[dims objectForKey:@"main-screen-width"] floatValue] == w
+		&& [[dims objectForKey:@"main-screen-height"] floatValue] == h) return NO;
+	CSLog(@"screen: %@ had %@x%@ at %@, real %.0fx%.0f at %.0f, fixing", why, [dims objectForKey:@"main-screen-width"],
+		[dims objectForKey:@"main-screen-height"], [dims objectForKey:@"main-screen-scale"], w, h, scale);
+	// springboard's own graphicsservices too, discoverCurrentConfiguration reads it
+	void *gs = dlopen("/System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices", RTLD_LAZY);
+	float (*gsScale)(void) = gs ? dlsym(gs, "GSMainScreenScaleFactor") : NULL;
+	void (*setInfo)(float, float, float, float) = gs ? dlsym(gs, "GSSetMainScreenInfo") : NULL;
+	if (gsScale && setInfo && gsScale() != scale) setInfo(w, h, scale, orientation);
+	NSMutableDictionary *fixed = dims ? [[dims mutableCopy] autorelease] : [NSMutableDictionary dictionary];
+	[fixed setObject:[NSNumber numberWithInt:(int)w] forKey:@"main-screen-width"];
+	[fixed setObject:[NSNumber numberWithInt:(int)h] forKey:@"main-screen-height"];
+	[fixed setObject:[NSNumber numberWithInt:(int)scale] forKey:@"main-screen-scale"];
+	if (![fixed objectForKey:@"main-screen-orientation"]) [fixed setObject:[NSNumber numberWithInt:0] forKey:@"main-screen-orientation"];
+	postingFixed = YES;
+	((void (*)(id, SEL, id, id))objc_msgSend)(platform, setSel, fixed, @"screen-dimensions");
+	postingFixed = NO;
+	return YES;
+}
+
+// every post goes through here: right size in, and check it really got out (springboard deletes
+// the shared memory first and only logs if making the new one fails)
+static void PostConfig(id self, SEL cmd) {
+	if (postingFixed) {
+		OrigPostConfig(self, cmd);
+		return;
+	}
+	unsigned long caller = (unsigned long)__builtin_return_address(0) - (unsigned long)_dyld_get_image_vmaddr_slide(0);
+	if (FixScreenDims(self, [NSString stringWithFormat:@"post from 0x%lx", caller])) return;
+	OrigPostConfig(self, cmd);
+	float w, h, scale, orientation;
+	if (!RealScreen(&w, &h, &scale, &orientation)) return;
+	float posted = PostedScale();
+	if (posted == scale) return;
+	CSLog(@"screen: posted %.0f instead of %.0f (from 0x%lx), posting again", posted, scale, caller);
+	OrigPostConfig(self, cmd);
+	CSLog(@"screen: now %.0f", PostedScale());
+}
+
+// start, home button: check what apps would get right now
+static void CheckScreen(NSString *why) {
+	static CFAbsoluteTime last;
+	CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+	if (!OrigPostConfig || now - last < 30) return;
+	last = now;
+	id platform = Send(objc_getClass("SBPlatformController"), "sharedInstance");
+	if (FixScreenDims(platform, why)) return;
+	float w, h, scale, orientation;
+	if (!RealScreen(&w, &h, &scale, &orientation)) return;
+	float posted = PostedScale();
+	if (posted == scale) return;
+	CSLog(@"screen: %@ found %.0f for apps instead of %.0f, posting again", why, posted, scale);
+	OrigPostConfig(platform, sel_registerName("postCurrentConfiguration"));
+	CSLog(@"screen: now %.0f", PostedScale());
+}
+
 __attribute__((constructor)) static void WACallScreenStart(void) {
 	@autoreleasepool { // no pool yet when substrate loads us
+	int screenTries = WaitForScreen();
+	if (screenTries != -1) {
+		CSLog(@"screen: backboardd ready after %d tries%@", screenTries, screenTries >= 50 ? @" (gave up)" : @"");
+		OrigPostConfig = (void (*)(id, SEL))Hook("SBPlatformController", "postCurrentConfiguration", (IMP)PostConfig);
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC * 10), dispatch_get_main_queue(), ^{ CheckScreen(@"start"); });
+	}
 	dlopen("/System/Library/PrivateFrameworks/TelephonyUI.framework/TelephonyUI", RTLD_LAZY);
 	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, UpdatePosted,
 		CFSTR("com.aronsz26.wa4s.callscreen.update"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);

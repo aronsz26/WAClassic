@@ -2,6 +2,8 @@
 #import <SystemConfiguration/SystemConfiguration.h>
 #import "WAClient.h"
 #import "WAUtil.h"
+#import "WADiag.h"
+#import "WAPrefs.h"
 #ifdef WA_DEV
 #import "dev/WADev.h"
 #endif
@@ -326,8 +328,18 @@ static void NetworkChanged(SCNetworkReachabilityRef target, SCNetworkReachabilit
 			error = [NSError errorWithDomain:@"WA4S" code:code userInfo:@{NSLocalizedDescriptionKey: msg}];
 			json = nil;
 		}
+		if (error) [self recordError:error request:req status:code];
 		completion(json, error);
 	}];
+}
+
+// e.g. "sendimage -1200 tls cell" for the diagnostics, only counted if the user said yes
+- (void)recordError:(NSError *)error request:(NSURLRequest *)req status:(NSInteger)status {
+	NSString *path = [req.URL.path stringByReplacingOccurrencesOfString:@"/api/" withString:@""];
+	if ([path isEqualToString:@"updates"] || error.code == NSURLErrorCancelled) return; // long poll timeouts are normal
+	NSString *what = status >= 400 ? [NSString stringWithFormat:@"%ld", (long)status] : [NSString stringWithFormat:@"%ld", (long)error.code];
+	[[WADiag shared] record:[NSString stringWithFormat:@"%@ %@ %@ %@", path, what,
+		[req.URL.scheme isEqualToString:@"https"] ? @"tls" : @"http", WAOnWiFi() ? @"wifi" : @"cell"]];
 }
 
 - (void)get:(NSString *)path params:(NSDictionary *)params completion:(WAJSONBlock)completion {

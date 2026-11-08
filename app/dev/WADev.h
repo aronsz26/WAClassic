@@ -7,6 +7,8 @@ void WADevStart(UIWindow *mainWindow);
 // "1.0 (241+)"
 NSString *WADevVersion(void);
 UIViewController *WADevMenu(void);
+// calls, or status if the debug switch says so
+UIViewController *WADevSecondTab(void);
 // from WAConnection
 void WADevCountRequest(NSUInteger bytesIn, NSUInteger bytesOut, BOOL failed);
 

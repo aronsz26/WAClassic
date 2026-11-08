@@ -19,6 +19,8 @@
 #import "WAVideoCallViewController.h"
 #import "WASetupViewController.h"
 #import "WABubbles.h"
+#import "WAUpdate.h"
+#import "WADiag.h"
 #ifdef WA_DEV
 #import "dev/WADev.h"
 #endif
@@ -82,7 +84,11 @@ static UINavigationController *Nav(UIViewController *root) {
 	UITabBarController *tabs = [[UITabBarController alloc] init];
 	tabs.viewControllers = @[
 		Nav([[WAFavoritesViewController alloc] init]),
+#ifdef WA_DEV
+		Nav(WADevSecondTab()),
+#else
 		Nav([[WAStatusViewController alloc] init]),
+#endif
 		Nav([[WAContactsViewController alloc] init]),
 		Nav(self.chats),
 		Nav([[WASettingsRootViewController alloc] init]),
@@ -143,7 +149,10 @@ static UINavigationController *Nav(UIViewController *root) {
 	[[WAClient shared] get:@"/api/status" params:nil completion:^(id json, NSError *error) {
 		if (![json isKindOfClass:[NSDictionary class]]) return;
 		if (json[@"paired"] && ![json[@"paired"] boolValue]) [self showSetup];
-		else [self checkBridgeVersion:json[@"version"]];
+		else {
+			[[WADiag shared] noteBridge:json];
+			[self checkBridgeVersion:json[@"version"]];
+		}
 	}];
 }
 
@@ -287,6 +296,9 @@ static UINavigationController *Nav(UIViewController *root) {
 	[self callChanged];
 	[self openRequestedChat];
 	[self applyAssetsIfIdle];
+	[[WADiag shared] askIfNeeded];
+	[[WADiag shared] sendIfDue];
+	[[WAUpdate shared] checkActive:YES];
 }
 
 // debug: jid in open-chat file opens that chat

@@ -64,14 +64,7 @@ func (b *Bridge) apiSetName(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"pushName": name})
 		return
 	}
-	err := b.cli.SendAppState(r.Context(), appstate.BuildSettingPushName(name))
-	if err != nil {
-		// after a fresh pair critical_block can fail with a bad LTHash, a full resync fixes it
-		log.Printf("set name: %v, resyncing critical_block", err)
-		if err = b.cli.FetchAppState(r.Context(), appstate.WAPatchCriticalBlock, true, false); err == nil {
-			err = b.cli.SendAppState(r.Context(), appstate.BuildSettingPushName(name))
-		}
-	}
+	err := b.sendAppState(r.Context(), appstate.BuildSettingPushName(name))
 	if err != nil {
 		log.Printf("set name: %v", err)
 		httpErr(w, err, 502)

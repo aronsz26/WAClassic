@@ -279,6 +279,15 @@ func (s *Store) Messages(chat string, before int64, limit int) ([]Message, error
 	return scanMessages(rows)
 }
 
+// CallLog returns the newest call entries over all chats, newest first.
+func (s *Store) CallLog(limit int) ([]Message, error) {
+	rows, err := s.db.Query(`SELECT `+msgCols+` FROM messages WHERE kind = 'call' ORDER BY ts DESC, seq DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanMessages(rows)
+}
+
 // Updates returns new or changed messages since upd.
 func (s *Store) Updates(since int64, limit int) ([]Message, error) {
 	rows, err := s.db.Query(`SELECT `+msgCols+` FROM messages WHERE upd > ? ORDER BY upd LIMIT ?`, since, limit)

@@ -50,7 +50,7 @@ func (s *Setup) newCode() {
 	code := s.code
 	s.mu.Unlock()
 	os.WriteFile(filepath.Join(s.dataDir, "setup-code"), []byte(code+"\n"), 0o600)
-	log.Printf("setup code for the app: %s (valid %d minutes; a new one on the setup page or after a restart)",
+	log.Printf("setup code for the app: %s (valid %d minutes; a new one on the bridge page or after a restart)",
 		code, int(setupValid.Minutes()))
 }
 
@@ -79,7 +79,7 @@ func (s *Setup) apiSetup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		s.wrong++
 		if s.wrong == setupMaxTries {
-			log.Printf("setup: too many wrong codes, make a new one on the setup page")
+			log.Printf("setup: too many wrong codes, make a new one on the bridge page")
 		}
 	}
 	s.mu.Unlock()

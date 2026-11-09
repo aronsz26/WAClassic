@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -149,7 +148,7 @@ func (b *Bridge) apiBroadcastSend(w http.ResponseWriter, r *http.Request) {
 	text := ""
 	q := r.URL.Query()
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "image/") {
-		data, err := io.ReadAll(io.LimitReader(r.Body, 16<<20))
+		data, err := readUpload(r, 16<<20, "broadcast")
 		if err != nil || len(data) == 0 {
 			http.Error(w, "picture needed", http.StatusBadRequest)
 			return

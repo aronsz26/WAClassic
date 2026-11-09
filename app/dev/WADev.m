@@ -1,5 +1,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "WADev.h"
+#import "../WAHello.h"
+#import "../WASetupViewController.h"
 #import "WACallsViewController.h"
 #import "../WAClient.h"
 #import "../WASettingsPages.h"
@@ -186,10 +188,61 @@ static void CallsCommand(NSString *what) {
 	if (what.length > 5 && [calls isKindOfClass:[WACallsViewController class]]) [calls devCommand:[what substringFromIndex:5]];
 }
 
+// setup pages without unlinking: hello (whole new flow, Done = close), hellodiag, hellothanks, helloterms
+static void HelloCommand(NSString *what) {
+	// not animated, presenting from a page that's still going away crashes
+	[commandNav dismissViewControllerAnimated:NO completion:nil];
+	commandNav = nil;
+	UIViewController *page;
+	if ([what isEqualToString:@"hellodiag"]) page = [[WADiagChoiceViewController alloc] init];
+	else if ([what isEqualToString:@"hellothanks"]) page = [[WAThankYouViewController alloc] init];
+	else if ([what isEqualToString:@"helloconnect"]) {
+		WAConnectViewController *c = [[WAConnectViewController alloc] init];
+		c.ios5Style = YES;
+		page = c;
+	} else if ([what isEqualToString:@"helloqr"]) {
+		WASetupViewController *q = [[WASetupViewController alloc] init];
+		q.ios5Style = YES;
+		page = q;
+	} else if ([what isEqualToString:@"helloloading"]) {
+		WALoadingChatsViewController *l = [[WALoadingChatsViewController alloc] init];
+		l.ios5Style = YES;
+		page = l;
+	} else if ([what isEqualToString:@"helloterms"]) {
+		WAHowItWorksViewController *terms = [[WAHowItWorksViewController alloc] init];
+		terms.ios5Style = YES;
+		page = terms;
+	} else page = [[WAHelloViewController alloc] init];
+	commandNav = [[UINavigationController alloc] initWithRootViewController:page];
+	[page setValue:^{ [WADevCloser close]; } forKey:@"finished"];
+	page.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+		target:[WADevCloser class] action:@selector(close)];
+	UIViewController *top = mainWindow.rootViewController;
+	while (top.presentedViewController) top = top.presentedViewController;
+	[top presentViewController:commandNav animated:NO completion:nil];
+}
+
+// junk of growing size to /api/sendimage without a chat over the current server: the bridge reads it
+// all, then says 400. nothing goes to whatsapp. results in the log ("dev: upload ...")
+static void UploadTest(NSArray *sizes) {
+	if (!sizes.count) return;
+	NSUInteger size = [sizes[0] unsignedIntegerValue];
+	NSMutableData *body = [NSMutableData dataWithLength:size];
+	for (NSUInteger k = 0; k < size; k++) ((unsigned char *)body.mutableBytes)[k] = (unsigned char)(k * 31 + 7);
+	NSDate *start = [NSDate date];
+	[[WAClient shared] post:@"/api/sendimage" params:@{} data:body contentType:@"image/jpeg" completion:^(id json, NSError *error) {
+		WALog(@"dev: upload %lu bytes -> %@ (%.1f s)", (unsigned long)size, error ? [NSString stringWithFormat:@"%ld %@", (long)error.code, error.localizedDescription] : @"ok",
+			-[start timeIntervalSinceNow]);
+		UploadTest([sizes subarrayWithRange:NSMakeRange(1, sizes.count - 1)]);
+	}];
+}
+
 static void Command(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef info) {
 	NSString *what = [(__bridge NSString *)name pathExtension];
 	WALog(@"dev: command %@", what);
 	if ([what hasPrefix:@"calls"]) CallsCommand(what);
+	else if ([what hasPrefix:@"hello"]) HelloCommand(what);
+	else if ([what isEqualToString:@"uploadtest"]) UploadTest(@[@20000, @300000, @1000000, @3000000]);
 	else if ([what isEqualToString:@"statustab"]) SetStatusTab(!StatusTabOn());
 	else if ([what isEqualToString:@"menu"]) Show(nil);
 	else if ([what isEqualToString:@"tests"]) Show(WADevTestsPage(YES));
@@ -229,7 +282,7 @@ void WADevStart(UIWindow *window) {
 		WADevCount.networkChanges++;
 	}];
 	for (NSString *what in @[@"menu", @"tests", @"stats", @"manual", @"log", @"close", @"message", @"clear", @"ring", @"hangup", @"banner",
-		@"calls", @"callsall", @"callsmissed", @"callsnew", @"callsedit", @"statustab"]) {
+		@"calls", @"callsall", @"callsmissed", @"callsnew", @"callsedit", @"statustab", @"hello", @"hellodiag", @"hellothanks", @"helloterms", @"helloconnect", @"helloqr", @"helloloading", @"uploadtest"]) {
 		NSString *name = [@"com.aronsz26.wa4s.dev." stringByAppendingString:what];
 		CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, Command, (__bridge CFStringRef)name, NULL,
 			CFNotificationSuspensionBehaviorDeliverImmediately);

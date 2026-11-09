@@ -3,6 +3,7 @@
 #import "WAClient.h"
 #import "WAUtil.h"
 #import "WADiag.h"
+#import "WATLSFix.h"
 #import "WAPrefs.h"
 #ifdef WA_DEV
 #import "dev/WADev.h"
@@ -338,8 +339,13 @@ static void NetworkChanged(SCNetworkReachabilityRef target, SCNetworkReachabilit
 	NSString *path = [req.URL.path stringByReplacingOccurrencesOfString:@"/api/" withString:@""];
 	if ([path isEqualToString:@"updates"] || error.code == NSURLErrorCancelled) return; // long poll timeouts are normal
 	NSString *what = status >= 400 ? [NSString stringWithFormat:@"%ld", (long)status] : [NSString stringWithFormat:@"%ld", (long)error.code];
-	[[WADiag shared] record:[NSString stringWithFormat:@"%@ %@ %@ %@", path, what,
-		[req.URL.scheme isEqualToString:@"https"] ? @"tls" : @"http", WAOnWiFi() ? @"wifi" : @"cell"]];
+	NSString *code = [NSString stringWithFormat:@"%@ %@ %@ %@", path, what,
+		[req.URL.scheme isEqualToString:@"https"] ? @"tls" : @"http", WAOnWiFi() ? @"wifi" : @"cell"];
+	// upload size in steps, only with the 1.0.3 consent
+	NSUInteger size = req.HTTPBody.length;
+	if (size > 0 && [WADiag shared].extended)
+		code = [code stringByAppendingString:size < 100000 ? @" <100KB" : size < 1000000 ? @" <1MB" : size < 5000000 ? @" <5MB" : @" 5MB+"];
+	[[WADiag shared] record:code];
 }
 
 - (void)get:(NSString *)path params:(NSDictionary *)params completion:(WAJSONBlock)completion {
@@ -354,7 +360,60 @@ static void NetworkChanged(SCNetworkReachabilityRef target, SCNetworkReachabilit
 	[self send:req completion:completion];
 }
 
+// TLSFix's openssl breaks writes over ~250 KB ("SSL error", the bridge sees the upload end early).
+// with it, big uploads over tls go to /api/chunk in pieces, then the request with ?chunk=id and no body
+static const NSUInteger kPiece = 128 * 1024;
+
 - (void)post:(NSString *)path params:(NSDictionary *)params data:(NSData *)body contentType:(NSString *)type
+	completion:(WAJSONBlock)completion {
+	if (WATLSFixActive() && body.length > kPiece && [self.serverURL hasPrefix:@"https"]) {
+		CFUUIDRef ref = CFUUIDCreate(NULL);
+		NSString *uid = (__bridge_transfer NSString *)CFUUIDCreateString(NULL, ref);
+		CFRelease(ref);
+		[self sendPieceOf:body id:uid offset:0 retried:NO done:^(NSError *error) {
+			if (error.code == 404) { // bridge without /api/chunk: the old way
+				[self postWhole:path params:params data:body contentType:type completion:completion];
+				return;
+			}
+			if (error) {
+				completion(nil, error);
+				return;
+			}
+			NSMutableDictionary *p = [params mutableCopy] ?: [NSMutableDictionary dictionary];
+			p[@"chunk"] = uid;
+			[self postWhole:path params:p data:[NSData data] contentType:type completion:completion];
+		}];
+		return;
+	}
+	[self postWhole:path params:params data:body contentType:type completion:completion];
+}
+
+- (void)sendPieceOf:(NSData *)body id:(NSString *)uid offset:(NSUInteger)offset retried:(BOOL)retried done:(void (^)(NSError *error))done {
+	if (offset >= body.length) {
+		done(nil);
+		return;
+	}
+	NSData *piece = [body subdataWithRange:NSMakeRange(offset, MIN(kPiece, body.length - offset))];
+	NSMutableURLRequest *req = [self requestFor:@"/api/chunk" params:@{@"id": uid, @"off": @(offset)}];
+	req.HTTPMethod = @"POST";
+	req.timeoutInterval = 60;
+	[req setValue:@"application/octet-stream" forHTTPHeaderField:@"Content-Type"];
+	req.HTTPBody = piece;
+	[self send:req completion:^(id json, NSError *error) {
+		if (error && error.code != 404 && !retried) {
+			// the bridge keeps what it has, try this piece once more
+			[self sendPieceOf:body id:uid offset:offset retried:YES done:done];
+			return;
+		}
+		if (error) {
+			done(error);
+			return;
+		}
+		[self sendPieceOf:body id:uid offset:offset + piece.length retried:NO done:done];
+	}];
+}
+
+- (void)postWhole:(NSString *)path params:(NSDictionary *)params data:(NSData *)body contentType:(NSString *)type
 	completion:(WAJSONBlock)completion {
 	NSMutableURLRequest *req = [self requestFor:path params:params];
 	req.HTTPMethod = @"POST";

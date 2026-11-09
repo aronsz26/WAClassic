@@ -21,6 +21,8 @@
 #import "WABubbles.h"
 #import "WAUpdate.h"
 #import "WADiag.h"
+#import "WAHello.h"
+#import "WATLSFix.h"
 #ifdef WA_DEV
 #import "dev/WADev.h"
 #endif
@@ -203,9 +205,8 @@ static UINavigationController *Nav(UIViewController *root) {
 - (void)showSetup {
 	if (self.setup) return;
 	WALog(@"setup: bridge not linked");
-	WAWelcomeViewController *welcome = [[WAWelcomeViewController alloc] init];
 	__weak WAAppDelegate *weak = self;
-	welcome.finished = ^{
+	void (^done)(void) = ^{
 		WAAppDelegate *me = weak;
 		[me.setup dismissViewControllerAnimated:YES completion:nil];
 		me.setup = nil;
@@ -215,7 +216,23 @@ static UINavigationController *Nav(UIViewController *root) {
 		[me syncAssets];
 		[me showSettingsTooltipSoon];
 	};
-	self.setup = [[UINavigationController alloc] initWithRootViewController:welcome];
+	UIViewController *first;
+	if (![WAClient shared].configured) {
+		// new install: ios 5 setup look, thank you page after the chats
+		WAHelloViewController *hello = [[WAHelloViewController alloc] init];
+		hello.finished = ^{
+			WAThankYouViewController *thanks = [[WAThankYouViewController alloc] init];
+			thanks.finished = done;
+			[weak.setup pushViewController:thanks animated:YES];
+		};
+		first = hello;
+	} else {
+		// bridge unlinked later: the short 2.10 way
+		WAWelcomeViewController *welcome = [[WAWelcomeViewController alloc] init];
+		welcome.finished = done;
+		first = welcome;
+	}
+	self.setup = [[UINavigationController alloc] initWithRootViewController:first];
 	UIViewController *top = self.window.rootViewController;
 	while (top.presentedViewController) top = top.presentedViewController;
 	[top presentViewController:self.setup animated:YES completion:nil];
@@ -296,6 +313,7 @@ static UINavigationController *Nav(UIViewController *root) {
 	[self callChanged];
 	[self openRequestedChat];
 	[self applyAssetsIfIdle];
+	[[WADiag shared] noteLaunched];
 	[[WADiag shared] askIfNeeded];
 	[[WADiag shared] sendIfDue];
 	[[WAUpdate shared] checkActive:YES];
@@ -350,6 +368,7 @@ int main(int argc, char *argv[]) {
 	WACompat4Install();
 #endif
 	@autoreleasepool {
+		WATLSFixStart(); // before any tls
 		return UIApplicationMain(argc, argv, nil, NSStringFromClass([WAAppDelegate class]));
 	}
 }

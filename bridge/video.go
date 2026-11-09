@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"image/jpeg"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -143,7 +142,7 @@ func (b *Bridge) apiSendVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chatStr := r.URL.Query().Get("chat")
-	data, err := io.ReadAll(io.LimitReader(r.Body, 100<<20))
+	data, err := readUpload(r, 100<<20, "video")
 	if err != nil || len(data) == 0 || chatStr == "" {
 		http.Error(w, "chat and video needed", http.StatusBadRequest)
 		return

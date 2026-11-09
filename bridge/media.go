@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
-	"io"
 	"log"
 	"math"
 	"net/http"
@@ -96,7 +95,7 @@ func (b *Bridge) apiSendVoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chatStr := r.URL.Query().Get("chat")
-	rec, err := io.ReadAll(io.LimitReader(r.Body, 16<<20))
+	rec, err := readUpload(r, 16<<20, "voice")
 	if err != nil || len(rec) == 0 || chatStr == "" {
 		http.Error(w, "chat and recording needed", http.StatusBadRequest)
 		return
@@ -182,7 +181,7 @@ func (b *Bridge) apiSendImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chatStr := r.URL.Query().Get("chat")
-	data, err := io.ReadAll(io.LimitReader(r.Body, 16<<20))
+	data, err := readUpload(r, 16<<20, "image")
 	if err != nil || len(data) == 0 || chatStr == "" {
 		http.Error(w, "chat and picture needed", http.StatusBadRequest)
 		return

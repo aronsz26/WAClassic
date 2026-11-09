@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -48,11 +49,26 @@ func (b *Bridge) handle(evt any) {
 		b.onChatPresence(e)
 	case *events.DeleteChat:
 		b.onDeleteChat(e)
+	case *events.AppStateSyncComplete:
+		b.onAppStateSyncComplete(e)
 	case *events.PairSuccess:
 		log.Printf("paired as %s", e.ID)
 	case *events.Connected:
 		log.Printf("connected")
+	case *events.Disconnected:
+		errCounts.add("wa disconnected")
+	case *events.KeepAliveTimeout:
+		errCounts.add("wa keepalive timeout")
+	case *events.StreamReplaced:
+		errCounts.add("wa stream replaced")
+	case *events.UndecryptableMessage:
+		errCounts.add("wa undecryptable")
+	case *events.ConnectFailure:
+		errCounts.add(fmt.Sprintf("wa connect failure %d", int(e.Reason)))
+	case *events.TemporaryBan:
+		errCounts.add("wa temporary ban")
 	case *events.LoggedOut:
+		errCounts.add("wa logged out")
 		log.Printf("logged out by the phone (reason %v)", e.Reason)
 		b.restartSoon("logged out") // restarts unlinked, shows qr again
 	}

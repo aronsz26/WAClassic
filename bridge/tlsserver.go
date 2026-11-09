@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -32,6 +33,9 @@ func tlsServer(dataDir, addr string, h http.Handler) (*http.Server, string, erro
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS10,
+			// TLSFix (Skyglow) puts openssl 1.1.1 into every app. its tls 1.3 breaks with go
+			// ("bad record MAC"), 1.2 works. ios 4-6 itself never goes above 1.2 anyway
+			MaxVersion: tls.VersionTLS12,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -43,6 +47,7 @@ func tlsServer(dataDir, addr string, h http.Handler) (*http.Server, string, erro
 			},
 		},
 		ReadHeaderTimeout: 20 * time.Second,
+		ErrorLog:          log.New(countingLog{}, "", log.LstdFlags),
 	}
 	return srv, fingerprint, nil
 }

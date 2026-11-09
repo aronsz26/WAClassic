@@ -66,7 +66,7 @@ func main() {
 	publicHost := flag.String("public-host", env("WA4S_PUBLIC_HOST", ""), "name or IP the app uses away from home (router/DynDNS), handed out by the setup code")
 	debsDir := flag.String("debs", env("WA4S_DEBS", "./debs"), "folder with the app's .deb packages, offered to Cydia at /repo/")
 	publicPort := flag.String("public-port", env("WA4S_PUBLIC_PORT", ""), "port the router forwards to the TLS listener (default: the -tls-listen port)")
-	assetsAuto := flag.Bool("assets-auto", env("WA4S_ASSETS", "") == "auto", "download the WhatsApp 2.10 look from archive.org at the start, without the setup page")
+	assetsAuto := flag.Bool("assets-auto", env("WA4S_ASSETS", "") == "auto", "download the WhatsApp 2.10 look from archive.org at the start, without the bridge page")
 	demo := flag.Bool("demo", false, "demo mode: made-up English chats for screenshots, no WhatsApp")
 	flag.Parse()
 	if *demo {
@@ -124,7 +124,7 @@ func main() {
 	b.backfillSecs()
 
 	if cli.Store.ID == nil {
-		log.Printf("not linked yet: set up the iPhone from the setup page (http://<this computer>:%s/), it shows the QR code", (*listen)[strings.LastIndex(*listen, ":")+1:])
+		log.Printf("not linked yet: set up the iPhone from the bridge page (http://<this computer>:%s/), it shows the QR code", (*listen)[strings.LastIndex(*listen, ":")+1:])
 		go b.pairLoop()
 	} else if err := cli.Connect(); err != nil {
 		log.Fatal(err)
@@ -203,6 +203,9 @@ func main() {
 	api("/api/debug/incoming", b.apiDebugIncoming)
 	api("/api/debug/clear", b.apiDebugClear)
 	api("/api/debug/call", b.calls.apiDebugCall)
+	api("/api/debug/appstate", b.apiDebugAppState)
+	api("/api/diag", b.apiDiag)
+	api("/api/chunk", b.apiChunk)
 
 	if *tlsListen != "" {
 		srv, fingerprint, err := tlsServer(*dataDir, *tlsListen, public)

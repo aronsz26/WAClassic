@@ -6,6 +6,7 @@
 #import "WAClient.h"
 #import "WAAssets.h"
 #import "WAUtil.h"
+#import "WAHello.h"
 
 NSString *const WALinkNeededNotification = @"WALinkNeededNotification";
 
@@ -20,6 +21,26 @@ static UILabel *NibLabel(CGRect frame, CGFloat size) {
 	l.textAlignment = NSTextAlignmentCenter;
 	l.numberOfLines = 0;
 	return l;
+}
+
+// new installs: white text on linen like the ios 5 setup
+static void OnLinen(UILabel *l) {
+	l.textColor = [UIColor whiteColor];
+	l.shadowColor = [UIColor colorWithWhite:0 alpha:0.7f];
+	l.shadowOffset = CGSizeMake(0, -1);
+}
+
+static UIImageView *LinenBackground(CGRect frame) {
+	UIImageView *bg = [[UIImageView alloc] initWithFrame:frame];
+	bg.image = WALinen();
+	bg.contentMode = UIViewContentModeTop;
+	bg.clipsToBounds = YES;
+	bg.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	return bg;
+}
+
+static void BarStyle(UIViewController *vc, BOOL ios5) {
+	vc.navigationController.navigationBar.barStyle = ios5 ? UIBarStyleBlack : UIBarStyleDefault;
 }
 
 // own drawings for the setup screens, the look of 2.10 only arrives through the bridge later
@@ -250,12 +271,15 @@ static UIImage *DrawnChatsImage(void) {
 	UIView *v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height - 44)];
 	v.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	self.view = v;
-	// empty grouped table for the pinstripes (pattern color went black)
-	UITableView *table = [[UITableView alloc] initWithFrame:v.bounds style:UITableViewStyleGrouped];
-	table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-	table.scrollEnabled = NO;
-	table.allowsSelection = NO;
-	[v addSubview:table];
+	if (self.ios5Style) [v addSubview:LinenBackground(v.bounds)];
+	else {
+		// empty grouped table for the pinstripes (pattern color went black)
+		UITableView *table = [[UITableView alloc] initWithFrame:v.bounds style:UITableViewStyleGrouped];
+		table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		table.scrollEnabled = NO;
+		table.allowsSelection = NO;
+		[v addSubview:table];
+	}
 
 	CGFloat w = v.bounds.size.width, top = v.bounds.size.height > 460 ? 52 : 18;
 	UIView *group = [[UIView alloc] initWithFrame:CGRectMake(0, top, w, 320)];
@@ -270,8 +294,10 @@ static UIImage *DrawnChatsImage(void) {
 	title.font = [UIFont fontWithName:@"Helvetica-Bold" size:19];
 	title.shadowColor = [UIColor whiteColor];
 	title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	if (self.ios5Style) OnLinen(title);
 	[group addSubview:title];
-	UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+	UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:
+		self.ios5Style ? UIActivityIndicatorViewStyleWhite : UIActivityIndicatorViewStyleGray];
 	spinner.center = CGPointMake(floorf(w / 2), 222);
 	spinner.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[spinner startAnimating];
@@ -279,6 +305,7 @@ static UIImage *DrawnChatsImage(void) {
 	UILabel *note = NibLabel(CGRectMake(20, 244, w - 40, 60), 15);
 	note.text = @"This can take a moment. Keep WhatsApp on your phone connected to the internet.";
 	note.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	if (self.ios5Style) OnLinen(note);
 	[group addSubview:note];
 }
 
@@ -288,6 +315,11 @@ static UIImage *DrawnChatsImage(void) {
 	self.navigationItem.hidesBackButton = YES;
 	_started = [NSDate date];
 	_lastCount = -1;
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	BarStyle(self, self.ios5Style);
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -341,6 +373,7 @@ static UIImage *DrawnChatsImage(void) {
 	UITableView *table = [[UITableView alloc] initWithFrame:[UIScreen mainScreen].applicationFrame style:UITableViewStyleGrouped];
 	table.allowsSelection = NO;
 	self.view = table;
+	if (self.ios5Style) table.backgroundView = LinenBackground(table.bounds);
 	_content = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 400)];
 
 	// header text
@@ -349,12 +382,13 @@ static UIImage *DrawnChatsImage(void) {
 	CGSize fit = [_header.text sizeWithFont:_header.font constrainedToSize:CGSizeMake(300, 200) lineBreakMode:NSLineBreakByWordWrapping];
 	_header.frame = CGRectMake(10, 12, 300, ceilf(fit.height));
 	_header.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
+	if (self.ios5Style) OnLinen(_header);
 	[_content addSubview:_header];
 
 	// qr box instead of the phone fields (256pt = 512px)
 	CGFloat top = CGRectGetMaxY(_header.frame) + 14;
 	_box = [[UIImageView alloc] initWithFrame:CGRectMake(22, top, 276, 276)];
-	UIImage *bg = WAStretch(@"TextFieldBg", 12, 12, 12, 12);
+	UIImage *bg = self.ios5Style ? nil : WAStretch(@"TextFieldBg", 12, 12, 12, 12);
 	_box.image = bg;
 	if (!bg) {
 		_box.backgroundColor = [UIColor whiteColor];
@@ -375,6 +409,7 @@ static UIImage *DrawnChatsImage(void) {
 	// footer
 	_footer = NibLabel(CGRectMake(10, CGRectGetMaxY(_box.frame) + 10, 300, 40), 15);
 	_footer.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
+	if (self.ios5Style) OnLinen(_footer);
 	[_content addSubview:_footer];
 	_content.frame = CGRectMake(0, 0, 320, CGRectGetMaxY(_footer.frame) + 10);
 	table.tableHeaderView = _content;
@@ -391,6 +426,7 @@ static UIImage *DrawnChatsImage(void) {
 
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
+	BarStyle(self, self.ios5Style);
 	if (_linked) return;
 	[self poll];
 	_timer = [NSTimer scheduledTimerWithTimeInterval:2 target:self selector:@selector(poll) userInfo:nil repeats:YES];
@@ -452,6 +488,7 @@ static UIImage *DrawnChatsImage(void) {
 		if ([json isKindOfClass:[NSDictionary class]]) [[WAClient shared] noteUpd:[json[@"upd"] longLongValue]];
 		// wait for the history, then the chats
 		WALoadingChatsViewController *loading = [[WALoadingChatsViewController alloc] init];
+		loading.ios5Style = self.ios5Style;
 		loading.finished = self.finished;
 		[self.navigationController pushViewController:loading animated:YES];
 	}];
@@ -478,19 +515,29 @@ static UIImage *DrawnChatsImage(void) {
 		style:UIBarButtonItemStyleDone target:self action:@selector(next)];
 	UIView *head = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 80)];
 	UILabel *text = NibLabel(CGRectMake(10, 12, 300, 60), 17);
-	text.text = @"Enter the address and the code from your WA Classic bridge's setup page.";
+	text.text = @"Enter the address and the code from your WA Classic bridge page.";
 	text.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[head addSubview:text];
 	self.tableView.tableHeaderView = head;
+	if (self.ios5Style) {
+		self.tableView.backgroundView = LinenBackground(self.tableView.bounds);
+		OnLinen(text);
+	}
 	UIView *foot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 90)];
 	_footer = NibLabel(CGRectMake(10, 6, 300, 80), 15);
-	_footer.text = @"Both are shown on your bridge's setup page in the browser.";
+	_footer.text = @"Both are shown on your bridge page in the browser.";
 	_footer.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[foot addSubview:_footer];
 	self.tableView.tableFooterView = foot;
+	if (self.ios5Style) OnLinen(_footer);
 	_address = [self field:@"192.168.1.20" keyboard:UIKeyboardTypeURL];
 	_address.text = [WAClient shared].homeURL;
 	_code = [self field:@"123456" keyboard:UIKeyboardTypeNumberPad];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	BarStyle(self, self.ios5Style);
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -546,6 +593,7 @@ static UIImage *DrawnChatsImage(void) {
 			return;
 		}
 		WASetupViewController *qr = [[WASetupViewController alloc] init];
+		qr.ios5Style = self.ios5Style;
 		qr.finished = self.finished;
 		[self.navigationController pushViewController:qr animated:YES];
 	}];
@@ -559,7 +607,7 @@ static UIFont *HowFont(void) {
 	return [UIFont fontWithName:@"Helvetica" size:15];
 }
 
-@interface WAHowItWorksViewController () <UIScrollViewDelegate>
+@interface WAHowItWorksViewController () <UIScrollViewDelegate, UIAlertViewDelegate>
 @end
 
 @implementation WAHowItWorksViewController {
@@ -571,20 +619,30 @@ static UIFont *HowFont(void) {
 
 - (void)loadView {
 	CGRect frame = [UIScreen mainScreen].applicationFrame;
-	UIView *v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height - 44)];
+	// ios 5 style has a toolbar below instead of the green button
+	UIView *v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height - (self.ios5Style ? 88 : 44))];
 	v.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	self.view = v;
-	// empty grouped table for the pinstripes (pattern color went black)
-	UITableView *table = [[UITableView alloc] initWithFrame:v.bounds style:UITableViewStyleGrouped];
-	table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-	table.scrollEnabled = NO;
-	table.allowsSelection = NO;
-	[v addSubview:table];
+	if (self.ios5Style) {
+		UIImageView *linen = [[UIImageView alloc] initWithFrame:v.bounds];
+		linen.image = WALinen();
+		linen.contentMode = UIViewContentModeTop;
+		linen.clipsToBounds = YES;
+		linen.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		[v addSubview:linen];
+	} else {
+		// empty grouped table for the pinstripes (pattern color went black)
+		UITableView *table = [[UITableView alloc] initWithFrame:v.bounds style:UITableViewStyleGrouped];
+		table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		table.scrollEnabled = NO;
+		table.allowsSelection = NO;
+		[v addSubview:table];
+	}
 
 	CGFloat w = v.bounds.size.width, h = v.bounds.size.height;
-	UIView *box = [[UIView alloc] initWithFrame:CGRectMake(10, 10, w - 20, h - 75)];
+	UIView *box = [[UIView alloc] initWithFrame:CGRectMake(10, 10, w - 20, h - (self.ios5Style ? 20 : 75))];
 	box.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-	box.backgroundColor = [UIColor colorWithWhite:0.97f alpha:1];
+	box.backgroundColor = self.ios5Style ? [UIColor whiteColor] : [UIColor colorWithWhite:0.97f alpha:1];
 	box.layer.cornerRadius = 10;
 	box.layer.borderWidth = 1;
 	box.layer.borderColor = [UIColor colorWithWhite:0.67f alpha:1].CGColor;
@@ -605,6 +663,7 @@ static UIFont *HowFont(void) {
 	_thumb.layer.cornerRadius = 3;
 	[box addSubview:_thumb];
 	[self fillScroll];
+	if (self.ios5Style) return;
 
 	UIButton *go = GreenButton(@"Agree and Continue", CGRectMake(floorf((w - 258) / 2), h - 53, 258, 41));
 	go.autoresizingMask |= UIViewAutoresizingFlexibleTopMargin;
@@ -622,6 +681,11 @@ static UIFont *HowFont(void) {
 }
 
 - (void)checkRead {
+	if (self.ios5Style) {
+		UIBarButtonItem *agree = self.toolbarItems.lastObject;
+		if (_scroll.contentOffset.y + _scroll.bounds.size.height >= _scroll.contentSize.height - 12) agree.enabled = YES;
+		return;
+	}
 	if (_go.enabled) return;
 	if (_scroll.contentOffset.y + _scroll.bounds.size.height >= _scroll.contentSize.height - 12) {
 		_go.enabled = YES;
@@ -642,7 +706,8 @@ static UIFont *HowFont(void) {
 	];
 	CGFloat width = _scroll.bounds.size.width, left = 14, right = 22, y = 14;
 	CGFloat textWidth = width - left - right;
-	y = [self addText:@"Please read these points to the end. Agree and Continue works once you've scrolled down."
+	y = [self addText:self.ios5Style ? @"Please read these points to the end. Agree works once you've scrolled down."
+		: @"Please read these points to the end. Agree and Continue works once you've scrolled down."
 		font:[UIFont fontWithName:@"Helvetica-Oblique" size:14] color:WAColor(0x6D6D72) y:y width:textWidth left:left] + 16;
 	NSUInteger number = 1;
 	for (NSArray *point in points) {
@@ -652,11 +717,12 @@ static UIFont *HowFont(void) {
 		}
 		y += 8;
 	}
-	y = [self addDiagnosticsAt:y number:number++ width:textWidth left:left];
+	if (!self.ios5Style) y = [self addDiagnosticsAt:y number:number++ width:textWidth left:left];
 	y = [self addHeading:[NSString stringWithFormat:@"%lu. Help", (unsigned long)number] y:y width:textWidth left:left];
 	y = [self addText:@"Set up your bridge first. The guide is on guide.waclassic.com, open it on your computer. Stuck? Ask on our Discord: discord.gg/HaTErjRdbk"
 		font:HowFont() color:[UIColor blackColor] y:y width:textWidth left:left] + 16;
-	y = [self addText:@"By tapping Agree and Continue you accept points 1 to 5. Diagnostics stay off unless you turn them on. Privacy policy: waclassic.com/legal"
+	y = [self addText:self.ios5Style ? @"By tapping Agree you accept points 1 to 5. Privacy policy: waclassic.com/legal"
+		: @"By tapping Agree and Continue you accept points 1 to 5. Diagnostics stay off unless you turn them on. Privacy policy: waclassic.com/legal"
 		font:[UIFont fontWithName:@"Helvetica" size:13] color:WAColor(0x6D6D72) y:y width:textWidth left:left] + 14;
 	_scroll.contentSize = CGSizeMake(width, y);
 	[self updateBar];
@@ -717,9 +783,52 @@ static UIFont *HowFont(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Terms";
+	self.title = self.ios5Style ? @"Terms and Conditions" : @"Terms";
 	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Back"
 		style:UIBarButtonItemStyleBordered target:nil action:nil];
+	if (self.ios5Style) {
+		self.navigationItem.hidesBackButton = YES;
+		UIBarButtonItem *no = [[UIBarButtonItem alloc] initWithTitle:@"Disagree" style:UIBarButtonItemStyleBordered
+			target:self action:@selector(disagree)];
+		UIBarButtonItem *yes = [[UIBarButtonItem alloc] initWithTitle:@"Agree" style:UIBarButtonItemStyleDone
+			target:self action:@selector(agree)];
+		yes.enabled = NO;
+		UIBarButtonItem *space = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+		self.toolbarItems = @[no, space, yes];
+	}
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	if (!self.ios5Style) return;
+	self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
+	self.navigationController.toolbar.barStyle = UIBarStyleBlack;
+	[self.navigationController setToolbarHidden:NO animated:animated];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+	[super viewWillDisappear:animated];
+	if (self.ios5Style) [self.navigationController setToolbarHidden:YES animated:animated];
+}
+
+// like the setup: Disagree goes back to the start, Agree asks once more
+- (void)disagree {
+	[[[UIAlertView alloc] initWithTitle:nil message:@"You have to agree to the terms to use WA Classic."
+		delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+}
+
+- (void)agree {
+	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Terms and Conditions"
+		message:@"I agree to the WA Classic terms and conditions." delegate:self cancelButtonTitle:@"Disagree" otherButtonTitles:@"Agree", nil];
+	[alert show];
+}
+
+- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
+	if (index == alert.cancelButtonIndex) return;
+	WALog(@"setup: terms agreed");
+	WADiagChoiceViewController *diag = [[WADiagChoiceViewController alloc] init];
+	diag.finished = self.finished;
+	[self.navigationController pushViewController:diag animated:YES];
 }
 
 - (void)viewDidAppear:(BOOL)animated {

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 // Demo mode (-demo): fake english chats for screenshots, no whatsapp, any key works.
@@ -31,6 +33,7 @@ type demoServer struct {
 	start    time.Time
 	call     *CallInfo     // fake call
 	callWake chan struct{} // closed on change to wake long polls
+	setupAt  time.Time     // setup screenshots: qr for a while after the code, then "paired"
 }
 
 const demoMe = "15550100@s.whatsapp.net"
@@ -213,8 +216,31 @@ func runDemo(listen string) {
 		d.setCall(func(c *CallInfo) { c.State, c.Reason = "ended", "local" })
 		writeJSON(w, state(r))
 	})
-	mux.HandleFunc("/api/pair/qr", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "already paired", http.StatusGone) })
-	j("/api/setup", func(*http.Request) any { return map[string]string{"token": "demo"} })
+	mux.HandleFunc("/api/pair/qr", func(w http.ResponseWriter, r *http.Request) {
+		d.mu.Lock()
+		since := time.Since(d.setupAt)
+		d.mu.Unlock()
+		switch {
+		case since < 3*time.Second:
+			http.Error(w, "waiting for a code", http.StatusServiceUnavailable)
+		case since < 25*time.Second:
+			png, err := qrcode.Encode("https://waclassic.com", qrcode.Medium, 512)
+			if err != nil {
+				httpErr(w, err, 500)
+				return
+			}
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(png)
+		default:
+			http.Error(w, "already paired", http.StatusGone)
+		}
+	})
+	j("/api/setup", func(*http.Request) any {
+		d.mu.Lock()
+		d.setupAt = time.Now()
+		d.mu.Unlock()
+		return map[string]string{"token": "demo"}
+	})
 	log.Printf("demo mode: made-up chats on %s (any key works)", listen)
 	log.Fatal(http.ListenAndServe(listen, mux))
 }

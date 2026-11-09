@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -69,7 +68,7 @@ func (b *Bridge) apiGroupPhoto(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a group is needed", http.StatusBadRequest)
 		return
 	}
-	data, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	data, err := readUpload(r, 10<<20, "group photo")
 	if err != nil {
 		httpErr(w, err, 400)
 		return

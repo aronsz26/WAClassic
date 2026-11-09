@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/jpeg"
 	_ "image/png"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -91,7 +90,7 @@ func (b *Bridge) apiSetAbout(w http.ResponseWriter, r *http.Request) {
 
 // apiSetPhoto sets the profile pic (cropped to 640px square), empty body removes it.
 func (b *Bridge) apiSetPhoto(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	data, err := readUpload(r, 10<<20, "me photo")
 	if err != nil {
 		httpErr(w, err, 400)
 		return

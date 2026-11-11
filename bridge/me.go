@@ -201,7 +201,7 @@ func (b *Bridge) apiContacts(w http.ResponseWriter, r *http.Request) {
 	var list []contact
 	var jids []types.JID
 	for jid, info := range all {
-		if info.FullName == "" && info.FirstName == "" { // not in address book
+		if firstNonEmpty(info.PushName, info.FullName, info.FirstName) == "" {
 			continue
 		}
 		key := b.chatKey(ctx, jid)
@@ -209,10 +209,8 @@ func (b *Bridge) apiContacts(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		seen[key.String()] = true
-		name := info.FullName
-		if name == "" {
-			name = info.FirstName
-		}
+		// Prefer the name the person set on WhatsApp, then local address book names.
+		name := firstNonEmpty(info.PushName, info.FullName, info.FirstName)
 		list = append(list, contact{JID: key.String(), Name: name, Phone: phoneNumber(key)})
 		jids = append(jids, key)
 	}

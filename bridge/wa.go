@@ -199,7 +199,7 @@ func (b *Bridge) onReceipt(e *events.Receipt) {
 
 func (b *Bridge) onHistory(e *events.HistorySync) {
 	ctx := context.Background()
-	count := 0
+	count, archived := 0, 0
 	for _, conv := range e.Data.GetConversations() {
 		jid, err := types.ParseJID(conv.GetID())
 		if err != nil {
@@ -208,6 +208,13 @@ func (b *Bridge) onHistory(e *events.HistorySync) {
 		chat := b.chatKey(ctx, jid)
 		if skipChat(chat) {
 			continue
+		}
+		if conv.Archived != nil {
+			if err := b.store.SetArchived(chat.String(), conv.GetArchived()); err != nil {
+				log.Printf("store history archive state: %v", err)
+			} else if conv.GetArchived() {
+				archived++
+			}
 		}
 		for _, hm := range conv.GetMessages() {
 			evt, err := b.cli.ParseWebMessage(jid, hm.GetMessage())
@@ -223,7 +230,7 @@ func (b *Bridge) onHistory(e *events.HistorySync) {
 		}
 		b.store.SetUnread(chat.String(), int(conv.GetUnreadCount()))
 	}
-	log.Printf("history sync %v: %d conversations, %d messages", e.Data.GetSyncType(), len(e.Data.GetConversations()), count)
+	log.Printf("history sync %v: %d conversations, %d messages, %d archived", e.Data.GetSyncType(), len(e.Data.GetConversations()), count, archived)
 	b.store.notify()
 }
 

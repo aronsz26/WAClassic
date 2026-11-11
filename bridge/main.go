@@ -274,7 +274,8 @@ func (b *Bridge) apiChats(w http.ResponseWriter, r *http.Request) {
 		jid, _ := types.ParseJID(chats[i].JID)
 		chats[i].Group = jid.Server == types.GroupServer
 		chats[i].Muted = b.mutedUntil(ctx, jid) != 0
-		if chats[i].Name == "" {
+		// Keep list titles current and prefer a person's WhatsApp profile name.
+		if jid.Server == types.DefaultUserServer || chats[i].Name == "" {
 			chats[i].Name = b.displayName(ctx, jid)
 		}
 		if chats[i].Group && !chats[i].LastFromMe && chats[i].LastSender != "" {
@@ -393,6 +394,11 @@ func (b *Bridge) apiUpdates(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			msgs, chatsChanged, presence = kept, false, nil
+		}
+		if !incomingOnly {
+			for i := range msgs {
+				msgs[i].Muted = b.isMuted(r.Context(), msgs[i].Chat)
+			}
 		}
 		if len(msgs) > 0 || chatsChanged || len(presence) > 0 || call != nil || wait == 0 {
 			upd := b.store.upd.Load()

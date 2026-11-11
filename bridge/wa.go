@@ -49,6 +49,13 @@ func (b *Bridge) handle(evt any) {
 		b.onChatPresence(e)
 	case *events.DeleteChat:
 		b.onDeleteChat(e)
+	case *events.Archive:
+		chat := b.chatKey(context.Background(), e.JID)
+		if err := b.store.SetArchived(chat.String(), e.Action.GetArchived()); err != nil {
+			log.Printf("store archive state: %v", err)
+		} else {
+			b.store.notify()
+		}
 	case *events.AppStateSyncComplete:
 		b.onAppStateSyncComplete(e)
 	case *events.PairSuccess:
@@ -245,7 +252,7 @@ func (b *Bridge) ensureChatName(ctx context.Context, chat types.JID, pushName st
 func (b *Bridge) contactName(ctx context.Context, jid types.JID) string {
 	c, err := b.cli.Store.Contacts.GetContact(ctx, jid)
 	if err == nil && c.Found {
-		if n := firstNonEmpty(c.FullName, c.FirstName, c.BusinessName, c.PushName); n != "" {
+		if n := firstNonEmpty(c.PushName, c.FullName, c.FirstName, c.BusinessName); n != "" {
 			return n
 		}
 	}

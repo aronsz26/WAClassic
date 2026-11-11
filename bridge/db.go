@@ -16,6 +16,7 @@ type Message struct {
 	Name   string `json:"name,omitempty"`
 	// for notifications
 	ChatName string `json:"chatName,omitempty"`
+	Muted    bool   `json:"muted,omitempty"` // used by the app to suppress in-app alerts
 	FromMe   bool   `json:"fromMe"`
 	TS       int64  `json:"ts"`
 	Kind     string `json:"kind"`
@@ -64,6 +65,7 @@ type Chat struct {
 	LastSender     string `json:"-"`
 	LastSenderName string `json:"lastSenderName,omitempty"`
 	Muted          bool   `json:"muted,omitempty"`
+	Archived       bool   `json:"archived,omitempty"`
 }
 
 const (
@@ -102,6 +104,7 @@ CREATE TABLE IF NOT EXISTS reactions (
 CREATE TABLE IF NOT EXISTS chats (
 	jid     TEXT PRIMARY KEY,
 	name    TEXT NOT NULL DEFAULT '',
+	archived INTEGER NOT NULL DEFAULT 0,
 	last_ts INTEGER NOT NULL DEFAULT 0,
 	unread  INTEGER NOT NULL DEFAULT 0,
 	upd     INTEGER NOT NULL DEFAULT 0
@@ -133,6 +136,7 @@ func openStore(db *sql.DB) (*Store, error) {
 	for _, col := range []string{"quote_id", "quote_sender", "quote_kind", "quote_text"} {
 		db.Exec(`ALTER TABLE messages ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`)
 	}
+	db.Exec(`ALTER TABLE chats ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
 	s := &Store{db: db, wake: make(chan struct{})}
 	var maxUpd sql.NullInt64
 	db.QueryRow(`SELECT MAX(m) FROM (SELECT MAX(upd) m FROM messages UNION SELECT MAX(upd) FROM chats)`).Scan(&maxUpd)
@@ -204,6 +208,12 @@ func (s *Store) SetChatName(jid, name string) error {
 	return err
 }
 
+func (s *Store) SetArchived(jid string, archived bool) error {
+	_, err := s.db.Exec(`INSERT INTO chats (jid, archived, upd) VALUES (?, ?, ?)
+		ON CONFLICT(jid) DO UPDATE SET archived = excluded.archived, upd = excluded.upd`, jid, archived, s.next())
+	return err
+}
+
 func (s *Store) SetUnread(jid string, unread int) error {
 	_, err := s.db.Exec(`UPDATE chats SET unread = ?, upd = ? WHERE jid = ?`, unread, s.next(), jid)
 	return err
@@ -211,7 +221,7 @@ func (s *Store) SetUnread(jid string, unread int) error {
 
 func (s *Store) Chats() ([]Chat, error) {
 	rows, err := s.db.Query(`SELECT c.jid, c.name, c.last_ts, c.unread, COALESCE(m.kind, ''), COALESCE(m.text, ''),
-		COALESCE(m.from_me, 0), COALESCE(m.sender, ''), COALESCE(m.status, 0), COALESCE(m.secs, 0)
+		COALESCE(m.from_me, 0), COALESCE(m.sender, ''), COALESCE(m.status, 0), COALESCE(m.secs, 0), c.archived
 		FROM chats c LEFT JOIN messages m ON m.seq = (SELECT seq FROM messages WHERE chat = c.jid ORDER BY ts DESC, seq DESC LIMIT 1)
 		WHERE c.last_ts > 0 ORDER BY c.last_ts DESC`)
 	if err != nil {
@@ -222,7 +232,7 @@ func (s *Store) Chats() ([]Chat, error) {
 	for rows.Next() {
 		var c Chat
 		if err := rows.Scan(&c.JID, &c.Name, &c.LastTS, &c.Unread, &c.LastKind, &c.LastText,
-			&c.LastFromMe, &c.LastSender, &c.LastStatus, &c.LastSecs); err != nil {
+			&c.LastFromMe, &c.LastSender, &c.LastStatus, &c.LastSecs, &c.Archived); err != nil {
 			return nil, err
 		}
 		if c.LastText == "" && c.LastKind != "" && c.LastKind != "audio" {

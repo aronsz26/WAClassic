@@ -93,6 +93,10 @@
 
 @end
 
+@interface WAChatListViewController ()
+- (NSDictionary *)chatAtIndexPath:(NSIndexPath *)indexPath;
+@end
+
 @implementation WAChatListViewController {
 	NSArray *_chats;
 	BOOL _loading;
@@ -203,8 +207,9 @@
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (style != UITableViewCellEditingStyleDelete || indexPath.row >= (NSInteger)_chats.count) return;
-	_deleting = _chats[indexPath.row];
+	if (style != UITableViewCellEditingStyleDelete) return;
+	_deleting = [self chatAtIndexPath:indexPath];
+	if (!_deleting) return;
 	[self askHowToDelete:[NSString stringWithFormat:@"Delete All Chat History with “%@”", _deleting[@"name"]]];
 }
 
@@ -239,8 +244,7 @@
 		[left removeObject:chat];
 		_chats = left;
 		if (row != NSNotFound) {
-			[self.tableView deleteRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:0]]
-				withRowAnimation:UITableViewRowAnimationFade];
+			[self.tableView reloadData];
 		}
 	} else {
 		_chats = @[];
@@ -317,13 +321,36 @@
 #pragma mark - Table
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return _chats.count;
+	NSInteger count = 0;
+	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue] == (section == 1)) count++;
+	return count;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	BOOL hasArchived = NO;
+	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue]) { hasArchived = YES; break; }
+	return hasArchived ? 2 : 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	return section == 1 ? @"Archived" : nil;
+}
+
+- (NSDictionary *)chatAtIndexPath:(NSIndexPath *)indexPath {
+	BOOL archived = indexPath.section == 1;
+	NSInteger row = 0;
+	for (NSDictionary *chat in _chats) {
+		if ([chat[@"archived"] boolValue] != archived) continue;
+		if (row++ == indexPath.row) return chat;
+	}
+	return nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	WAChatCell *cell = [tableView dequeueReusableCellWithIdentifier:@"chat"];
 	if (!cell) cell = [[WAChatCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"chat"];
-	NSDictionary *chat = _chats[indexPath.row];
+	NSDictionary *chat = [self chatAtIndexPath:indexPath];
+	if (!chat) return cell;
 	BOOL group = [chat[@"group"] boolValue];
 	NSString *jid = chat[@"jid"];
 	cell.jid = jid;
@@ -370,7 +397,8 @@
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-	NSDictionary *chat = _chats[indexPath.row];
+	NSDictionary *chat = [self chatAtIndexPath:indexPath];
+	if (!chat) return;
 	WAChatViewController *vc = [[WAChatViewController alloc] initWithChat:chat];
 	[self.navigationController pushViewController:vc animated:YES];
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];

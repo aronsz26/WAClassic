@@ -284,6 +284,7 @@ static UINavigationController *Nav(UIViewController *root) {
 	long long now = (long long)[[NSDate date] timeIntervalSince1970];
 	for (NSDictionary *m in note.userInfo[@"messages"]) {
 		if ([m[@"fromMe"] boolValue] || [m[@"chat"] isEqualToString:openJID]) continue;
+		if ([m[@"muted"] boolValue]) continue;
 		if ([m[@"kind"] isEqualToString:@"call"]) continue;
 		if ([m[@"status"] intValue] >= 3 || [m[@"ts"] longLongValue] < now - 120) continue;
 		if ([self.shownBanners containsObject:m[@"seq"]]) continue;

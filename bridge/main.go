@@ -109,6 +109,8 @@ func main() {
 	}
 
 	cli := whatsmeow.NewClient(device, waLog.Stdout("WA", "INFO", false))
+	// Full snapshots carry the current archive state; emit their events so the app's chat store can import it.
+	cli.EmitAppStateEventsOnFullSync = true
 	b := &Bridge{cli: cli, store: st, dataDir: *dataDir}
 	cli.AddEventHandler(b.handle)
 	b.calls = newCalls(b) // needs to exist before connecting

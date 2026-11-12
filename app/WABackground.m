@@ -280,7 +280,8 @@ NSString *WANotificationText(NSDictionary *m) {
 	long long now = (long long)[[NSDate date] timeIntervalSince1970];
 	NSInteger shown = 0;
 	for (NSDictionary *m in json[@"messages"]) {
-		if ([m[@"fromMe"] boolValue] || [m[@"ts"] longLongValue] < now - 3600 || shown >= 5) continue;
+		if ([m[@"fromMe"] boolValue] || [m[@"muted"] boolValue]
+			|| [m[@"ts"] longLongValue] < now - 3600 || shown >= 5) continue;
 		if ([m[@"kind"] isEqualToString:@"call"]) continue; // calls have their own notifs
 		// notification settings
 		BOOL group = [m[@"chat"] hasSuffix:@"@g.us"];

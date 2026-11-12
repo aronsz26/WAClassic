@@ -95,13 +95,47 @@
 
 @interface WAChatListViewController ()
 - (NSDictionary *)chatAtIndexPath:(NSIndexPath *)indexPath;
+- (instancetype)initArchivedOnly;
+- (void)openArchivedChats;
+- (NSInteger)archivedCount;
+@end
+
+@interface WAArchivedGlyphView : UIView
+@end
+
+@implementation WAArchivedGlyphView
+- (void)drawRect:(CGRect)rect {
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetStrokeColorWithColor(ctx, WAColor(0x7F7F7F).CGColor);
+	CGContextSetLineWidth(ctx, 1.3);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextMoveToPoint(ctx, 3, 8);
+	CGContextAddLineToPoint(ctx, 3, 17);
+	CGContextAddLineToPoint(ctx, 17, 17);
+	CGContextAddLineToPoint(ctx, 17, 8);
+	CGContextMoveToPoint(ctx, 2, 7);
+	CGContextAddLineToPoint(ctx, 18, 7);
+	CGContextMoveToPoint(ctx, 10, 1);
+	CGContextAddLineToPoint(ctx, 10, 12);
+	CGContextMoveToPoint(ctx, 7, 9);
+	CGContextAddLineToPoint(ctx, 10, 12);
+	CGContextAddLineToPoint(ctx, 13, 9);
+	CGContextStrokePath(ctx);
+}
 @end
 
 @implementation WAChatListViewController {
 	NSArray *_chats;
 	BOOL _loading;
+	BOOL _archivedOnly;
+	BOOL _showArchivedShortcut;
 	UIBarButtonItem *_penItem, *_deleteAllItem;
 	NSDictionary *_deleting; // nil = all
+}
+
+- (instancetype)initArchivedOnly {
+	if ((self = [self initWithStyle:UITableViewStylePlain])) _archivedOnly = YES;
+	return self;
 }
 
 - (instancetype)initWithStyle:(UITableViewStyle)style {
@@ -115,16 +149,23 @@
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	self.tableView.rowHeight = 64;
-	self.navigationItem.leftBarButtonItem = self.editButtonItem;
-	self.editButtonItem.title = @"Edit";
+	if ([self.tableView respondsToSelector:@selector(setAlwaysBounceVertical:)]) self.tableView.alwaysBounceVertical = YES;
+	if (_archivedOnly) {
+		self.title = @"Archived";
+	} else {
+		self.navigationItem.leftBarButtonItem = self.editButtonItem;
+		self.editButtonItem.title = @"Edit";
+	}
 	UIImage *pen = [self whiteGlyph:WAImg(@"Pen")];
 	_penItem = pen
 		? [[UIBarButtonItem alloc] initWithImage:pen style:UIBarButtonItemStyleBordered target:self action:@selector(compose)]
 		: [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCompose target:self action:@selector(compose)];
 	_deleteAllItem = [[UIBarButtonItem alloc] initWithTitle:@"Delete All" style:UIBarButtonItemStyleBordered
 		target:self action:@selector(deleteAllTapped)];
-	self.navigationItem.rightBarButtonItem = _penItem;
-	self.tableView.tableHeaderView = [self headerBar];
+	if (!_archivedOnly) {
+		self.navigationItem.rightBarButtonItem = _penItem;
+		self.tableView.tableHeaderView = [self headerBar];
+	}
 	if (NSClassFromString(@"UIRefreshControl")) { // ios 6 only
 		UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
 		[refresh addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
@@ -197,6 +238,7 @@
 
 // edit mode
 - (void)setEditing:(BOOL)editing animated:(BOOL)animated {
+	if (_archivedOnly) return;
 	[super setEditing:editing animated:animated];
 	self.editButtonItem.title = editing ? @"Done" : @"Edit";
 	[self.navigationItem setRightBarButtonItem:editing ? _deleteAllItem : _penItem animated:animated];
@@ -288,8 +330,9 @@
 			self.title = @"Waiting for network";
 			return;
 		}
-		self.title = @"Chats";
+		self.title = self->_archivedOnly ? @"Archived" : @"Chats";
 		self->_chats = json[@"chats"];
+		if (![self archivedCount]) self->_showArchivedShortcut = NO;
 		[self.tableView reloadData];
 		[self updateBadge];
 		[client startUpdatesFrom:[json[@"upd"] longLongValue]];
@@ -322,28 +365,84 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	NSInteger count = 0;
-	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue] == (section == 1)) count++;
+	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue] == _archivedOnly) count++;
 	return count;
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	BOOL hasArchived = NO;
-	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue]) { hasArchived = YES; break; }
-	return hasArchived ? 2 : 1;
+	return 1;
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	return section == 1 ? @"Archived" : nil;
+- (NSInteger)archivedCount {
+	NSInteger count = 0;
+	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue]) count++;
+	return count;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	return (!_archivedOnly && _showArchivedShortcut && [self archivedCount]) ? 44 : 0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	if (_archivedOnly || !_showArchivedShortcut || ![self archivedCount]) return nil;
+	UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 44)];
+	row.backgroundColor = [UIColor whiteColor];
+	row.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+	button.frame = row.bounds;
+	button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+	[button addTarget:self action:@selector(openArchivedChats) forControlEvents:UIControlEventTouchUpInside];
+	WAArchivedGlyphView *glyph = [[WAArchivedGlyphView alloc] initWithFrame:CGRectMake(18, 13, 20, 18)];
+	glyph.backgroundColor = [UIColor clearColor];
+	[button addSubview:glyph];
+	UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(58, 0, 190, 44)];
+	title.text = @"Archived";
+	title.font = [UIFont systemFontOfSize:16];
+	title.textColor = WAColor(0x37588C);
+	title.backgroundColor = [UIColor clearColor];
+	[button addSubview:title];
+	UILabel *count = [[UILabel alloc] initWithFrame:CGRectMake(tableView.bounds.size.width - 48, 0, 30, 44)];
+	count.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+	count.text = [NSString stringWithFormat:@"%ld", (long)[self archivedCount]];
+	count.textAlignment = NSTextAlignmentRight;
+	count.font = [UIFont systemFontOfSize:14];
+	count.textColor = WAColor(0x7F7F7F);
+	count.backgroundColor = [UIColor clearColor];
+	[button addSubview:count];
+	UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 43, tableView.bounds.size.width, 1)];
+	line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	line.backgroundColor = WAColor(0xE5E5E5);
+	[button addSubview:line];
+	[row addSubview:button];
+	return row;
 }
 
 - (NSDictionary *)chatAtIndexPath:(NSIndexPath *)indexPath {
-	BOOL archived = indexPath.section == 1;
 	NSInteger row = 0;
 	for (NSDictionary *chat in _chats) {
-		if ([chat[@"archived"] boolValue] != archived) continue;
+		if ([chat[@"archived"] boolValue] != _archivedOnly) continue;
 		if (row++ == indexPath.row) return chat;
 	}
 	return nil;
+}
+
+- (void)openArchivedChats {
+	WAChatListViewController *archived = [[WAChatListViewController alloc] initArchivedOnly];
+	[self.navigationController pushViewController:archived animated:YES];
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	if (_archivedOnly || _showArchivedShortcut || ![self archivedCount]) return;
+	// Reveal the shortcut with a light pull, before the refresh control's trigger distance.
+	if (scrollView.contentOffset.y < -44) {
+		_showArchivedShortcut = YES;
+		[UIView beginAnimations:nil context:NULL];
+		[UIView setAnimationDuration:0.18];
+		[self.tableView beginUpdates];
+		[self.tableView endUpdates];
+		[UIView commitAnimations];
+	}
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {

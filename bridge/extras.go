@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +17,7 @@ import (
 	"github.com/polymorfa/hypermeow"
 	"github.com/polymorfa/hypermeow/types"
 	"github.com/polymorfa/hypermeow/types/events"
+	"golang.org/x/image/draw"
 )
 
 // Presence is shown under the chat title: online, last seen, typing.
@@ -185,6 +189,18 @@ func (b *Bridge) apiAvatar(w http.ResponseWriter, r *http.Request) {
 		data, err := b.fetchAvatar(r.Context(), jid, !full)
 		switch {
 		case err == nil:
+			if !full {
+				img, _, decodeErr := image.Decode(bytes.NewReader(data))
+				if decodeErr != nil {
+					httpErr(w, decodeErr, 502)
+					return
+				}
+				data, err = avatarPreviewJPEG(img)
+				if err != nil {
+					httpErr(w, err, 502)
+					return
+				}
+			}
 			os.WriteFile(file, data, 0o600)
 			os.Remove(none)
 		case errors.Is(err, whatsmeow.ErrProfilePictureNotSet), errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized), errors.Is(err, errNoPicture):
@@ -200,8 +216,36 @@ func (b *Bridge) apiAvatar(w http.ResponseWriter, r *http.Request) {
 			// keep the old one
 		}
 	}
+	// Older bridge versions stored the upstream preview at its original size.
+	// Compact it once on first use after upgrading so the cached file is small too.
+	if !full {
+		if cached, readErr := os.ReadFile(file); readErr == nil {
+			if bounds, _, configErr := image.DecodeConfig(bytes.NewReader(cached)); configErr == nil && (bounds.Width > 72 || bounds.Height > 72) {
+				if img, _, decodeErr := image.Decode(bytes.NewReader(cached)); decodeErr == nil {
+					if compact, compactErr := avatarPreviewJPEG(img); compactErr == nil {
+						_ = os.WriteFile(file, compact, 0o600)
+					}
+				}
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "image/jpeg")
 	http.ServeFile(w, r, file)
+}
+
+// avatarPreviewJPEG keeps list and participant avatars small on the wire.
+func avatarPreviewJPEG(img image.Image) ([]byte, error) {
+	bounds := img.Bounds()
+	side := min(bounds.Dx(), bounds.Dy())
+	crop := image.Rect(bounds.Min.X+(bounds.Dx()-side)/2, bounds.Min.Y+(bounds.Dy()-side)/2, 0, 0)
+	crop.Max = crop.Min.Add(image.Pt(side, side))
+	dst := image.NewRGBA(image.Rect(0, 0, 72, 72))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, crop, draw.Src, nil)
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 65}); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 var errNoPicture = errors.New("no picture")

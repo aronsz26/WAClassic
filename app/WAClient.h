@@ -50,6 +50,7 @@ typedef void (^WAJSONBlock)(id json, NSError *error);
 // avatars, cached
 - (UIImage *)cachedAvatarFor:(NSString *)jid;
 - (void)avatarFor:(NSString *)jid completion:(void (^)(UIImage *image))completion;
+- (void)forgetAvatar:(NSString *)jid;
 - (NSURLRequest *)fullAvatarRequestFor:(NSString *)jid;
 
 // set online (whatsapp only sends presence while we're online)

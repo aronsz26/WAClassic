@@ -34,7 +34,7 @@ type assetLook struct {
 }
 
 var (
-	classicLook = assetLook{name: "classic", version: "2.10.2", dir: "assets", minFiles: 100, wanted: wantedAsset,
+	classicLook = assetLook{name: "classic", version: "2.10.2", rev: 1, dir: "assets", minFiles: 100, wanted: wantedAsset,
 		url: "https://archive.org/download/whats-app-2.16.2/WhatsApp%202.10.2.ipa", md5: "9d0664cbd61988aa2039d23ebf41a36a"}
 	// archive.org only has 2.18.81 with Watusi, whatsapp's files are untouched (2.18.90 needs iOS 8)
 	flatLook = assetLook{name: "flat", version: "2.18.81", rev: 2, dir: "assets-flat", minFiles: 4, wanted: wantedFlatAsset,
@@ -80,6 +80,8 @@ func wantedAsset(zipName string) string {
 	switch {
 	case dir == "Wallpaper/" && (strings.HasSuffix(file, ".png") || strings.HasSuffix(file, ".jpg")):
 		return name // wallpaper library
+	case strings.HasSuffix(dir, ".lproj/") && strings.Count(dir, "/") == 1 && file == "Localizable.strings":
+		return name // whatsapp's own translations, the app takes its language only
 	case dir != "":
 		return ""
 	case strings.HasSuffix(file, ".caf"), file == "PaymentWP@2x.jpg": // sounds + welcome wallpaper
@@ -127,14 +129,17 @@ type Assets struct {
 	err         string
 	manifest    assetManifest
 	byName      map[string]bool
+	stale       bool // files from an older list, refreshed in the background
 }
 
 func newAssets(dataDir string, look assetLook) *Assets {
 	a := &Assets{look: look, dir: filepath.Join(dataDir, look.dir), state: "missing"}
 	if data, err := os.ReadFile(filepath.Join(a.dir, "manifest.json")); err == nil {
 		var m assetManifest
-		if json.Unmarshal(data, &m) == nil && m.Version == look.manifestID() {
+		if json.Unmarshal(data, &m) == nil && (m.Version == look.manifestID() || strings.HasPrefix(m.Version, look.version)) {
+			// older file list: keep serving it, the user already said yes to the download
 			a.setManifest(m)
+			a.stale = m.Version != look.manifestID()
 		}
 	}
 	return a
@@ -153,6 +158,23 @@ func (a *Assets) status() map[string]any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return map[string]any{"state": a.state, "done": a.done, "total": a.total, "error": a.err, "files": len(a.manifest.Files)}
+}
+
+// refresh downloads again while the old files stay served (new file list, see rev)
+func (a *Assets) refresh() {
+	go func() {
+		log.Printf("%s look: the bridge keeps more files now, downloading WhatsApp %s again", a.look.name, a.look.version)
+		m, err := a.download()
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if err != nil {
+			log.Printf("%s look: refresh failed, old files stay: %v", a.look.name, err)
+			return
+		}
+		log.Printf("%s look: %d files of WhatsApp %s ready", a.look.name, len(m.Files), a.look.version)
+		a.setManifest(m)
+		a.stale = false
+	}()
 }
 
 // fetch starts the download in the background (one at a time, retries after failure).
@@ -280,7 +302,8 @@ func extractTo(f *zip.File, dst string) (int64, error) {
 // apiList: GET /api/assets[?look=flat]
 func (a *Assets) apiList(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
-	out := map[string]any{"version": a.look.version, "look": a.look.name, "state": a.state}
+	out := map[string]any{"version": a.look.version, "look": a.look.name, "state": a.state,
+		"done": a.done, "total": a.total, "error": a.err}
 	if a.state == "ready" {
 		out["files"] = a.manifest.Files
 	}
@@ -306,7 +329,11 @@ func (a *Assets) apiFile(w http.ResponseWriter, r *http.Request) {
 type AssetLooks struct{ classic, flat *Assets }
 
 func newAssetLooks(dataDir string) *AssetLooks {
-	return &AssetLooks{classic: newAssets(dataDir, classicLook), flat: newAssets(dataDir, flatLook)}
+	l := &AssetLooks{classic: newAssets(dataDir, classicLook), flat: newAssets(dataDir, flatLook)}
+	if l.classic.stale {
+		l.classic.refresh()
+	}
+	return l
 }
 
 func (l *AssetLooks) pick(r *http.Request) *Assets {
@@ -329,4 +356,14 @@ func (l *AssetLooks) status() map[string]any {
 }
 
 func (l *AssetLooks) apiList(w http.ResponseWriter, r *http.Request) { l.pick(r).apiList(w, r) }
+
+// apiFetch: POST /api/assets/fetch, the app asks for the download during setup (same as the page's button)
+func (l *AssetLooks) apiFetch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	l.fetch()
+	writeJSON(w, l.classic.status())
+}
 func (l *AssetLooks) apiFile(w http.ResponseWriter, r *http.Request) { l.pick(r).apiFile(w, r) }

@@ -21,6 +21,8 @@ typedef void (^WAJSONBlock)(id json, NSError *error);
 @property (nonatomic, copy) NSString *token;
 @property (nonatomic, readonly) NSString *serverURL;
 @property (nonatomic, readonly) BOOL away;
+// NO only after ios said there is no network at all (unknown counts as up)
+@property (nonatomic, readonly) BOOL networkUp;
 // pick the address that works
 - (void)chooseServer:(void (^)(BOOL reachable))done;
 // main thread only
@@ -41,13 +43,14 @@ typedef void (^WAJSONBlock)(id json, NSError *error);
 - (void)post:(NSString *)path params:(NSDictionary *)params data:(NSData *)body contentType:(NSString *)type
 	completion:(WAJSONBlock)completion;
 - (NSURLRequest *)mediaRequestForSeq:(long long)seq;
-- (NSURLRequest *)mediaRequestForSeq:(long long)seq format:(NSString *)format; // mp4 / poster / m4a
+- (NSURLRequest *)mediaRequestForSeq:(long long)seq format:(NSString *)format; // thumb / mp4 / poster / m4a
 - (NSURLRequest *)voiceRequestForSeq:(long long)seq;
 - (NSURLRequest *)videoRequestForSeq:(long long)seq optimized:(BOOL)small; // small = optimize video
 
 // avatars, cached
 - (UIImage *)cachedAvatarFor:(NSString *)jid;
 - (void)avatarFor:(NSString *)jid completion:(void (^)(UIImage *image))completion;
+- (void)forgetAvatar:(NSString *)jid;
 - (NSURLRequest *)fullAvatarRequestFor:(NSString *)jid;
 
 // set online (whatsapp only sends presence while we're online)

@@ -78,8 +78,8 @@ static const NSTimeInterval kEvery = 6 * 3600;
 		if ([[d stringForKey:@"updNotified"] isEqualToString:version]) return;
 		[d setObject:version forKey:@"updNotified"];
 		UILocalNotification *n = [[UILocalNotification alloc] init];
-		n.alertBody = [NSString stringWithFormat:@"WA Classic %@ is available. Tap to update.", version];
-		n.alertAction = @"Update";
+		n.alertBody = [NSString stringWithFormat:WAL(@"WA Classic %@ is available. Tap to update."), version];
+		n.alertAction = WAL(@"Update");
 		n.userInfo = @{@"update": version};
 		[[UIApplication sharedApplication] presentLocalNotificationNow:n];
 		WALog(@"update: %@ notification shown", version);
@@ -89,9 +89,9 @@ static const NSTimeInterval kEvery = 6 * 3600;
 	if ([[d stringForKey:@"updLater"] isEqualToString:version] && ![latest[@"important"] boolValue]) return;
 	_showing = YES;
 	_offered = version;
-	NSString *notes = [latest[@"notes"] length] ? latest[@"notes"] : @"Update it in Cydia.";
-	[[[UIAlertView alloc] initWithTitle:[NSString stringWithFormat:@"WA Classic %@ is available", version] message:notes
-		delegate:self cancelButtonTitle:@"Later" otherButtonTitles:@"Open Cydia", nil] show];
+	NSString *notes = [latest[@"notes"] length] ? latest[@"notes"] : WAL(@"Update it in Cydia.");
+	[[[UIAlertView alloc] initWithTitle:[NSString stringWithFormat:WAL(@"WA Classic %@ is available"), version] message:notes
+		delegate:self cancelButtonTitle:WAL(@"Later") otherButtonTitles:WAL(@"Open Cydia"), nil] show];
 	WALog(@"update: %@ offered", version);
 }
 
@@ -104,8 +104,8 @@ static const NSTimeInterval kEvery = 6 * 3600;
 	}
 	NSURL *cydia = [NSURL URLWithString:[@"cydia://package/" stringByAppendingString:[self package]]];
 	if (![[UIApplication sharedApplication] openURL:cydia]) {
-		[[[UIAlertView alloc] initWithTitle:@"Open Cydia" message:@"Open Cydia, go to Changes and update WA Classic there."
-			delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+		[[[UIAlertView alloc] initWithTitle:WAL(@"Open Cydia") message:WAL(@"Open Cydia, go to Changes and update WA Classic there.")
+			delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 	}
 }
 

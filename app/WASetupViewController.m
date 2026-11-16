@@ -290,7 +290,7 @@ static UIImage *DrawnChatsImage(void) {
 	art.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[group addSubview:art];
 	UILabel *title = NibLabel(CGRectMake(10, 152, w - 20, 48), 19);
-	title.text = @"Loading Chats and Conversations";
+	title.text = WAL(@"Loading Chats and Conversations");
 	title.font = [UIFont fontWithName:@"Helvetica-Bold" size:19];
 	title.shadowColor = [UIColor whiteColor];
 	title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -303,7 +303,7 @@ static UIImage *DrawnChatsImage(void) {
 	[spinner startAnimating];
 	[group addSubview:spinner];
 	UILabel *note = NibLabel(CGRectMake(20, 244, w - 40, 60), 15);
-	note.text = @"This can take a moment. Keep WhatsApp on your phone connected to the internet.";
+	note.text = WAL(@"This can take a moment. Keep WhatsApp on your phone connected to the internet.");
 	note.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	if (self.ios5Style) OnLinen(note);
 	[group addSubview:note];
@@ -311,7 +311,7 @@ static UIImage *DrawnChatsImage(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Loading";
+	self.title = WAL(@"Loading");
 	self.navigationItem.hidesBackButton = YES;
 	_started = [NSDate date];
 	_lastCount = -1;
@@ -378,7 +378,7 @@ static UIImage *DrawnChatsImage(void) {
 
 	// header text
 	_header = NibLabel(CGRectMake(10, 12, 300, 42), 17);
-	_header.text = @"To use WhatsApp on this iPhone, open WhatsApp on your phone, tap Settings > Linked Devices > Link a Device and scan this code.";
+	_header.text = WAL(@"To use WhatsApp on this iPhone, open WhatsApp on your phone, tap Settings > Linked Devices > Link a Device and scan this code.");
 	CGSize fit = [_header.text sizeWithFont:_header.font constrainedToSize:CGSizeMake(300, 200) lineBreakMode:NSLineBreakByWordWrapping];
 	_header.frame = CGRectMake(10, 12, 300, ceilf(fit.height));
 	_header.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
@@ -413,14 +413,14 @@ static UIImage *DrawnChatsImage(void) {
 	[_content addSubview:_footer];
 	_content.frame = CGRectMake(0, 0, 320, CGRectGetMaxY(_footer.frame) + 10);
 	table.tableHeaderView = _content;
-	[self showState:@"Waiting for a code from WhatsApp…" qr:nil];
+	[self showState:WAL(@"Waiting for a code from WhatsApp…") qr:nil];
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Link Your Phone";
+	self.title = WAL(@"Link Your Phone");
 	// no bridge, no code
-	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Network"
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Network")
 		style:UIBarButtonItemStyleBordered target:self action:@selector(network)];
 }
 
@@ -453,7 +453,7 @@ static UIImage *DrawnChatsImage(void) {
 - (void)poll {
 	if (_loading || _linked) return;
 	if (![WAClient shared].configured) {
-		[self showState:@"Tap Network to set up your WA Classic bridge." qr:nil];
+		[self showState:WAL(@"Tap Network to set up your WA Classic bridge.") qr:nil];
 		return;
 	}
 	_loading = YES;
@@ -464,14 +464,14 @@ static UIImage *DrawnChatsImage(void) {
 		if (self->_linked) return;
 		if (status == 200 && data.length) {
 			UIImage *img = [UIImage imageWithData:data scale:2];
-			if (img) [self showState:@"Point your phone at this code.\nIt renews itself every few seconds." qr:img];
+			if (img) [self showState:WAL(@"Point your phone at this code.\nIt renews itself every few seconds.") qr:img];
 		} else if (status == 410) {
 			[self linkedNow];
 		} else if (status == 503) {
-			[self showState:@"Waiting for a code from WhatsApp…" qr:nil];
+			[self showState:WAL(@"Waiting for a code from WhatsApp…") qr:nil];
 		} else {
 			WALog(@"setup: qr status %ld %@", (long)status, error.localizedDescription ?: @"");
-			[self showState:error ? @"Connecting..." : [NSString stringWithFormat:@"There was a problem with the service. Code = %ld.", (long)status] qr:nil];
+			[self showState:error ? WAL(@"Connecting...") : [NSString stringWithFormat:WAL(@"There was a problem with the service. Code = %ld."), (long)status] qr:nil];
 			if (error) [[WAClient shared] chooseServer:nil];
 		}
 	}];
@@ -482,7 +482,7 @@ static UIImage *DrawnChatsImage(void) {
 	[_timer invalidate];
 	_timer = nil;
 	WALog(@"setup: linked");
-	[self showState:@"Connected" qr:nil];
+	[self showState:WAL(@"Connected") qr:nil];
 	// start counter at the bridge's so history sync doesn't notify
 	[[WAClient shared] get:@"/api/status" params:nil completion:^(id json, NSError *error) {
 		if ([json isKindOfClass:[NSDictionary class]]) [[WAClient shared] noteUpd:[json[@"upd"] longLongValue]];
@@ -510,12 +510,12 @@ static UIImage *DrawnChatsImage(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Your Bridge";
-	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Next"
+	self.title = WAL(@"Your Bridge");
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Next")
 		style:UIBarButtonItemStyleDone target:self action:@selector(next)];
 	UIView *head = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 80)];
 	UILabel *text = NibLabel(CGRectMake(10, 12, 300, 60), 17);
-	text.text = @"Enter the address and the code from your WA Classic bridge page.";
+	text.text = WAL(@"Enter the address and the code from your WA Classic bridge page.");
 	text.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[head addSubview:text];
 	self.tableView.tableHeaderView = head;
@@ -525,7 +525,7 @@ static UIImage *DrawnChatsImage(void) {
 	}
 	UIView *foot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 90)];
 	_footer = NibLabel(CGRectMake(10, 6, 300, 80), 15);
-	_footer.text = @"Both are shown on your bridge page in the browser.";
+	_footer.text = WAL(@"Both are shown on your bridge page in the browser.");
 	_footer.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[foot addSubview:_footer];
 	self.tableView.tableFooterView = foot;
@@ -571,7 +571,7 @@ static UIImage *DrawnChatsImage(void) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
-	cell.textLabel.text = indexPath.row == 0 ? @"Address" : @"Code";
+	cell.textLabel.text = indexPath.row == 0 ? WAL(@"Address") : WAL(@"Code");
 	cell.accessoryView = indexPath.row == 0 ? _address : _code;
 	return cell;
 }
@@ -585,17 +585,17 @@ static UIImage *DrawnChatsImage(void) {
 	UIBarButtonItem *nextItem = self.navigationItem.rightBarButtonItem;
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:spin];
 	[[WAClient shared] setupWithAddress:_address.text code:_code.text completion:^(NSError *error) {
-		self->_busy = NO;
-		self.navigationItem.rightBarButtonItem = nextItem;
 		if (error) {
+			self->_busy = NO;
+			self.navigationItem.rightBarButtonItem = nextItem;
 			[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			return;
 		}
-		WASetupViewController *qr = [[WASetupViewController alloc] init];
-		qr.ios5Style = self.ios5Style;
-		qr.finished = self.finished;
-		[self.navigationController pushViewController:qr animated:YES];
+		[WALookChoiceViewController pushNextFrom:self ios5Style:self.ios5Style finished:self.finished done:^{
+			self->_busy = NO;
+			self.navigationItem.rightBarButtonItem = nextItem;
+		}];
 	}];
 }
 
@@ -665,7 +665,7 @@ static UIFont *HowFont(void) {
 	[self fillScroll];
 	if (self.ios5Style) return;
 
-	UIButton *go = GreenButton(@"Agree and Continue", CGRectMake(floorf((w - 258) / 2), h - 53, 258, 41));
+	UIButton *go = GreenButton(WAL(@"Agree and Continue"), CGRectMake(floorf((w - 258) / 2), h - 53, 258, 41));
 	go.autoresizingMask |= UIViewAutoresizingFlexibleTopMargin;
 	[go addTarget:self action:@selector(next) forControlEvents:UIControlEventTouchUpInside];
 	// read to the end first
@@ -696,18 +696,18 @@ static UIFont *HowFont(void) {
 // terms style: numbered points, read to the end before Agree and Continue works
 - (void)fillScroll {
 	NSArray *points = @[
-		@[@"About WA Classic", @"WA Classic is unofficial. It isn't made by or connected to WhatsApp or Meta."],
-		@[@"Your bridge", @"WA Classic runs through your own bridge, a small program on your computer. It is linked to WhatsApp like WhatsApp Web. There is no WA Classic server: your messages go from WhatsApp to your bridge and then to this iPhone.",
-			@"The bridge stores your messages unencrypted, so only run it on a computer you trust."],
-		@[@"Staying connected", @"Keep the bridge running. While it's off or asleep, nothing arrives.",
-			@"Your phone has to come online about every two weeks, or WhatsApp unlinks the bridge."],
-		@[@"Your account", @"Using WA Classic may break WhatsApp's terms of service, and your account could be banned. If you can't risk that, don't link your main account."],
-		@[@"Updates", @"WA Classic asks update.waclassic.com every few hours if there's a new version. That request contains nothing about you."],
+		@[WAL(@"About WA Classic"), WAL(@"WA Classic is unofficial. It isn't made by or connected to WhatsApp or Meta.")],
+		@[WAL(@"Your bridge"), WAL(@"WA Classic runs through your own bridge, a small program on your computer. It is linked to WhatsApp like WhatsApp Web. There is no WA Classic server: your messages go from WhatsApp to your bridge and then to this iPhone."),
+			WAL(@"The bridge stores your messages unencrypted, so only run it on a computer you trust.")],
+		@[WAL(@"Staying connected"), WAL(@"Keep the bridge running. While it's off or asleep, nothing arrives."),
+			WAL(@"Your phone has to come online about every two weeks, or WhatsApp unlinks the bridge.")],
+		@[WAL(@"Your account"), WAL(@"Using WA Classic may break WhatsApp's terms of service, and your account could be banned. If you can't risk that, don't link your main account.")],
+		@[WAL(@"Updates"), WAL(@"WA Classic asks update.waclassic.com every few hours if there's a new version. That request contains nothing about you.")],
 	];
 	CGFloat width = _scroll.bounds.size.width, left = 14, right = 22, y = 14;
 	CGFloat textWidth = width - left - right;
-	y = [self addText:self.ios5Style ? @"Please read these points to the end. Agree works once you've scrolled down."
-		: @"Please read these points to the end. Agree and Continue works once you've scrolled down."
+	y = [self addText:self.ios5Style ? WAL(@"Please read these points to the end. Agree works once you've scrolled down.")
+		: WAL(@"Please read these points to the end. Agree and Continue works once you've scrolled down.")
 		font:[UIFont fontWithName:@"Helvetica-Oblique" size:14] color:WAColor(0x6D6D72) y:y width:textWidth left:left] + 16;
 	NSUInteger number = 1;
 	for (NSArray *point in points) {
@@ -718,11 +718,11 @@ static UIFont *HowFont(void) {
 		y += 8;
 	}
 	if (!self.ios5Style) y = [self addDiagnosticsAt:y number:number++ width:textWidth left:left];
-	y = [self addHeading:[NSString stringWithFormat:@"%lu. Help", (unsigned long)number] y:y width:textWidth left:left];
-	y = [self addText:@"Set up your bridge first. The guide is on guide.waclassic.com, open it on your computer. Stuck? Ask on our Discord: discord.gg/HaTErjRdbk"
+	y = [self addHeading:[NSString stringWithFormat:WAL(@"%lu. Help"), (unsigned long)number] y:y width:textWidth left:left];
+	y = [self addText:WAL(@"Set up your bridge first. The guide is on guide.waclassic.com, open it on your computer. Stuck? Ask on our Discord: discord.gg/HaTErjRdbk")
 		font:HowFont() color:[UIColor blackColor] y:y width:textWidth left:left] + 16;
-	y = [self addText:self.ios5Style ? @"By tapping Agree you accept points 1 to 5. Privacy policy: waclassic.com/legal"
-		: @"By tapping Agree and Continue you accept points 1 to 5. Diagnostics stay off unless you turn them on. Privacy policy: waclassic.com/legal"
+	y = [self addText:self.ios5Style ? WAL(@"By tapping Agree you accept points 1 to 5. Privacy policy: waclassic.com/legal")
+		: WAL(@"By tapping Agree and Continue you accept points 1 to 5. Diagnostics stay off unless you turn them on. Privacy policy: waclassic.com/legal")
 		font:[UIFont fontWithName:@"Helvetica" size:13] color:WAColor(0x6D6D72) y:y width:textWidth left:left] + 14;
 	_scroll.contentSize = CGSizeMake(width, y);
 	[self updateBar];
@@ -752,8 +752,8 @@ static UIFont *HowFont(void) {
 
 // optional, off unless switched on. agreeing below doesn't turn it on
 - (CGFloat)addDiagnosticsAt:(CGFloat)y number:(NSUInteger)number width:(CGFloat)width left:(CGFloat)left {
-	y = [self addHeading:[NSString stringWithFormat:@"%lu. Diagnostics (optional)", (unsigned long)number] y:y width:width left:left];
-	y = [self addText:@"Helps find bugs faster. Once a day: your iPhone model, iOS and app version, bridge version and system, language, crash reports and error codes. Never messages, contacts, numbers or names. You can change it later in Settings › Chat Settings › Advanced."
+	y = [self addHeading:[NSString stringWithFormat:WAL(@"%lu. Diagnostics (optional)"), (unsigned long)number] y:y width:width left:left];
+	y = [self addText:WAL(@"Helps find bugs faster. Once a day: your iPhone model, iOS and app version, bridge version and system, language, crash reports and error codes. Never messages, contacts, numbers or names. You can change it later in Settings › Chat Settings › Advanced.")
 		font:HowFont() color:[UIColor blackColor] y:y width:width left:left] + 10;
 	_diag = [[UISwitch alloc] init];
 	_diag.on = WAPrefBool(WAPrefDiagnostics);
@@ -762,7 +762,7 @@ static UIFont *HowFont(void) {
 	_diag.frame = sf;
 	[_scroll addSubview:_diag];
 	UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(left, y, sf.origin.x - left - 8, sf.size.height)];
-	name.text = @"Send Diagnostics";
+	name.text = WAL(@"Send Diagnostics");
 	name.font = [UIFont boldSystemFontOfSize:15];
 	name.backgroundColor = [UIColor clearColor];
 	[_scroll addSubview:name];
@@ -783,14 +783,14 @@ static UIFont *HowFont(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = self.ios5Style ? @"Terms and Conditions" : @"Terms";
-	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Back"
+	self.title = self.ios5Style ? WAL(@"Terms and Conditions") : WAL(@"Terms");
+	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Back")
 		style:UIBarButtonItemStyleBordered target:nil action:nil];
 	if (self.ios5Style) {
 		self.navigationItem.hidesBackButton = YES;
-		UIBarButtonItem *no = [[UIBarButtonItem alloc] initWithTitle:@"Disagree" style:UIBarButtonItemStyleBordered
+		UIBarButtonItem *no = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Disagree") style:UIBarButtonItemStyleBordered
 			target:self action:@selector(disagree)];
-		UIBarButtonItem *yes = [[UIBarButtonItem alloc] initWithTitle:@"Agree" style:UIBarButtonItemStyleDone
+		UIBarButtonItem *yes = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Agree") style:UIBarButtonItemStyleDone
 			target:self action:@selector(agree)];
 		yes.enabled = NO;
 		UIBarButtonItem *space = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
@@ -813,13 +813,13 @@ static UIFont *HowFont(void) {
 
 // like the setup: Disagree goes back to the start, Agree asks once more
 - (void)disagree {
-	[[[UIAlertView alloc] initWithTitle:nil message:@"You have to agree to the terms to use WA Classic."
-		delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+	[[[UIAlertView alloc] initWithTitle:nil message:WAL(@"You have to agree to the terms to use WA Classic.")
+		delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 }
 
 - (void)agree {
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Terms and Conditions"
-		message:@"I agree to the WA Classic terms and conditions." delegate:self cancelButtonTitle:@"Disagree" otherButtonTitles:@"Agree", nil];
+	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:WAL(@"Terms and Conditions")
+		message:WAL(@"I agree to the WA Classic terms and conditions.") delegate:self cancelButtonTitle:WAL(@"Disagree") otherButtonTitles:WAL(@"Agree"), nil];
 	[alert show];
 }
 
@@ -849,9 +849,7 @@ static UIFont *HowFont(void) {
 		[self.navigationController pushViewController:connect animated:YES];
 		return;
 	}
-	WASetupViewController *qr = [[WASetupViewController alloc] init];
-	qr.finished = self.finished;
-	[self.navigationController pushViewController:qr animated:YES];
+	[WALookChoiceViewController pushNextFrom:self ios5Style:NO finished:self.finished done:nil];
 }
 
 @end
@@ -881,7 +879,7 @@ static UIFont *HowFont(void) {
 	[v addSubview:box];
 	// welcome text
 	UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(68, 40, 184, 64)];
-	title.text = @"Welcome to\nWA Classic";
+	title.text = WAL(@"Welcome to\nWA Classic");
 	title.font = [UIFont fontWithName:@"HelveticaNeue-Light" size:24];
 	title.textColor = WAColor(0x3C3C3C);
 	title.shadowColor = [UIColor whiteColor];
@@ -891,7 +889,7 @@ static UIFont *HowFont(void) {
 	title.numberOfLines = 2;
 	[box addSubview:title];
 	UILabel *thanks = [[UILabel alloc] initWithFrame:CGRectMake(70, 106, 180, 58)];
-	thanks.text = @"Thank you for downloading it. Have fun with the app!";
+	thanks.text = WAL(@"Thank you for downloading it. Have fun with the app!");
 	thanks.font = [UIFont fontWithName:@"Helvetica" size:15];
 	thanks.textColor = WAColor(0x5A5A5A);
 	thanks.shadowColor = [UIColor whiteColor];
@@ -911,15 +909,15 @@ static UIFont *HowFont(void) {
 	[box addSubview:sign];
 
 	// continue button
-	UIButton *go = GreenButton(@"Continue", CGRectMake(31, CGRectGetMaxY(box.frame) + (top > 10 ? 26 : 14), 258, 41));
+	UIButton *go = GreenButton(WAL(@"Continue"), CGRectMake(31, CGRectGetMaxY(box.frame) + (top > 10 ? 26 : 14), 258, 41));
 	[go addTarget:self action:@selector(next) forControlEvents:UIControlEventTouchUpInside];
 	[v addSubview:go];
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Welcome";
-	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Welcome"
+	self.title = WAL(@"Welcome");
+	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Welcome")
 		style:UIBarButtonItemStyleBordered target:nil action:nil];
 }
 
@@ -927,6 +925,206 @@ static UIFont *HowFont(void) {
 	WAHowItWorksViewController *how = [[WAHowItWorksViewController alloc] init];
 	how.finished = self.finished;
 	[self.navigationController pushViewController:how animated:YES];
+}
+
+@end
+
+#pragma mark - Classic look (download through the bridge, used to be on the bridge page only)
+
+@interface WALookChoiceViewController () <UIAlertViewDelegate>
+@end
+
+@implementation WALookChoiceViewController {
+	NSInteger _choice; // -1 none, 0 download, 1 not now
+	UILabel *_note;
+	NSTimer *_timer;
+	BOOL _busy, _gone;
+}
+
+static void PushQR(UINavigationController *nav, BOOL ios5, void (^finished)(void)) {
+	WASetupViewController *qr = [[WASetupViewController alloc] init];
+	qr.ios5Style = ios5;
+	qr.finished = finished;
+	[nav pushViewController:qr animated:YES];
+}
+
++ (void)pushNextFrom:(UIViewController *)from ios5Style:(BOOL)ios5 finished:(void (^)(void))finished done:(void (^)(void))done {
+	NSMutableURLRequest *req = [[WAClient shared] requestFor:@"/api/assets" params:nil];
+	req.timeoutInterval = 10;
+	[[WAClient shared] load:req completion:^(NSData *data, NSInteger status, NSError *error) {
+		NSDictionary *json = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+		NSString *state = [json isKindOfClass:[NSDictionary class]] ? json[@"state"] : nil;
+		// already there or on the way, or we can't tell: straight to the qr code
+		BOOL ask = status == 200 && ([state isEqualToString:@"missing"] || [state isEqualToString:@"failed"]);
+		WALog(@"setup: bridge look %@", state ?: [NSString stringWithFormat:@"%ld", (long)status]);
+		if (ask) {
+			WALookChoiceViewController *look = [[WALookChoiceViewController alloc] init];
+			look.ios5Style = ios5;
+			look.finished = finished;
+			[from.navigationController pushViewController:look animated:YES];
+		} else PushQR(from.navigationController, ios5, finished);
+		if (done) done();
+	}];
+}
+
+- (instancetype)init {
+	if ((self = [super initWithStyle:UITableViewStyleGrouped])) _choice = -1;
+	return self;
+}
+
+- (UILabel *)label:(CGRect)frame size:(CGFloat)size bold:(BOOL)bold {
+	UILabel *l = NibLabel(frame, size);
+	if (bold) l.font = [UIFont fontWithName:@"Helvetica-Bold" size:size];
+	l.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	if (self.ios5Style) OnLinen(l);
+	return l;
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	self.title = WAL(@"Classic Look");
+	if (self.ios5Style) self.tableView.backgroundView = LinenBackground(self.tableView.bounds);
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Next")
+		style:UIBarButtonItemStyleDone target:self action:@selector(next)];
+	self.navigationItem.rightBarButtonItem.enabled = NO;
+	CGFloat w = self.tableView.bounds.size.width;
+
+	UIView *head = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 52)];
+	UILabel *title = [self label:CGRectMake(20, 18, w - 40, 26) size:19 bold:YES];
+	title.text = WAL(@"The Look of WhatsApp 2.10");
+	[head addSubview:title];
+	self.tableView.tableHeaderView = head;
+
+	NSString *text = WAL(@"WA Classic doesn't come with WhatsApp's own pictures and sounds. Your bridge can download WhatsApp 2.10 once from the Internet Archive (about 10 MB) and keep only those. Without them, WA Classic uses simple drawings.");
+	UIFont *font = [UIFont fontWithName:@"Helvetica" size:15];
+	CGFloat th = ceilf([text sizeWithFont:font constrainedToSize:CGSizeMake(w - 60, 400)].height);
+	UIView *foot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, th + 70)];
+	UILabel *about = [self label:CGRectMake(30, 6, w - 60, th) size:15 bold:NO];
+	about.text = text;
+	[foot addSubview:about];
+	_note = [self label:CGRectMake(30, th + 16, w - 60, 40) size:15 bold:YES];
+	[foot addSubview:_note];
+	self.tableView.tableFooterView = foot;
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	BarStyle(self, self.ios5Style);
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+	[super viewWillDisappear:animated];
+	[_timer invalidate];
+	_timer = nil;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	return 2;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	cell.textLabel.text = indexPath.row == 0 ? WAL(@"Download") : WAL(@"Not Now");
+	cell.accessoryType = indexPath.row == _choice ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+	if (indexPath.row == _choice) cell.textLabel.textColor = WAColor(0x385487);
+	return cell;
+}
+
+- (NSIndexPath *)tableView:(UITableView *)tableView willSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	return _busy ? nil : indexPath;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	_choice = indexPath.row;
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+	[tableView reloadData];
+	self.navigationItem.rightBarButtonItem.enabled = YES;
+}
+
+- (void)setBusy:(BOOL)busy {
+	_busy = busy;
+	self.navigationItem.hidesBackButton = busy;
+	if (busy) {
+		UIActivityIndicatorView *spin = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
+		[spin startAnimating];
+		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:spin];
+	} else {
+		self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Next")
+			style:UIBarButtonItemStyleDone target:self action:@selector(next)];
+	}
+}
+
+- (void)goOn {
+	if (_gone) return;
+	_gone = YES;
+	[_timer invalidate];
+	_timer = nil;
+	// back from the qr code goes to Your Bridge, this page is done
+	UINavigationController *nav = self.navigationController;
+	WASetupViewController *qr = [[WASetupViewController alloc] init];
+	qr.ios5Style = self.ios5Style;
+	qr.finished = self.finished;
+	NSMutableArray *stack = [nav.viewControllers mutableCopy];
+	[stack removeObject:self];
+	[stack addObject:qr];
+	[nav setViewControllers:stack animated:YES];
+}
+
+- (void)next {
+	if (_busy || _choice < 0) return;
+	if (_choice == 1) {
+		WALog(@"setup: look not now");
+		[self goOn];
+		return;
+	}
+	WALog(@"setup: look download");
+	[self setBusy:YES];
+	_note.text = WAL(@"Downloading…");
+	[[WAClient shared] post:@"/api/assets/fetch" params:nil completion:^(id json, NSError *error) {
+		if (error) {
+			// bridge before 1.0.4 doesn't have it
+			BOOL old = [error.domain isEqualToString:@"WA4S"] && error.code == 404;
+			[self failed:old ? WAL(@"Your bridge can't do this yet. Update it, or download the look on your bridge page later.")
+				: error.localizedDescription canRetry:!old];
+			return;
+		}
+		[self->_timer invalidate];
+		self->_timer = [NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(poll) userInfo:nil repeats:YES];
+	}];
+}
+
+- (void)poll {
+	[[WAClient shared] get:@"/api/assets" params:nil completion:^(id json, NSError *error) {
+		if (self->_gone || !self->_busy || ![json isKindOfClass:[NSDictionary class]]) return;
+		NSString *state = json[@"state"];
+		if ([state isEqualToString:@"ready"]) {
+			WALog(@"setup: bridge has the look");
+			WAAssetsSync(nil); // to the phone while the qr code is up
+			[self goOn];
+		} else if ([state isEqualToString:@"failed"]) {
+			[self failed:[json[@"error"] length] ? json[@"error"] : WAL(@"The download didn't work.") canRetry:YES];
+		} else {
+			double done = [json[@"done"] doubleValue] / 1e6, total = [json[@"total"] doubleValue] / 1e6;
+			self->_note.text = total > 0 && done < total
+				? [NSString stringWithFormat:WAL(@"Downloading… %@ of %@ MB"), [NSString stringWithFormat:@"%.1f", done], [NSString stringWithFormat:@"%.1f", total]]
+				: WAL(@"Downloading…");
+		}
+	}];
+}
+
+- (void)failed:(NSString *)message canRetry:(BOOL)retry {
+	[_timer invalidate];
+	_timer = nil;
+	WALog(@"setup: look failed: %@", message);
+	_note.text = nil;
+	[self setBusy:NO];
+	[[[UIAlertView alloc] initWithTitle:WAL(@"Download Failed") message:message delegate:self
+		cancelButtonTitle:WAL(@"Not Now") otherButtonTitles:retry ? WAL(@"Try Again") : nil, nil] show];
+}
+
+- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index {
+	if (index == alert.cancelButtonIndex) [self goOn];
+	else [self next];
 }
 
 @end

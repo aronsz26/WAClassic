@@ -1,23 +1,27 @@
 #import "WAUtil.h"
 
-static NSDateFormatter *Formatter(NSString *format) {
-	NSDateFormatter *f = [[NSDateFormatter alloc] init];
-	f.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_GB"];
-	f.dateFormat = format;
-	return f;
+// english format, template for the other languages
+static NSDateFormatter *Formatter(NSString *format, NSString *dateTemplate) {
+	return WADateFormatter(format, dateTemplate);
 }
 
 NSString *WAClockTime(long long ts) {
 	static NSDateFormatter *f;
-	if (!f) f = Formatter(@"HH:mm");
+	static NSUInteger gen;
+	if (!f || gen != WALanguageGeneration()) {
+		f = Formatter(@"HH:mm", @"HHmm");
+		gen = WALanguageGeneration();
+	}
 	return [f stringFromDate:[NSDate dateWithTimeIntervalSince1970:ts]];
 }
 
 NSString *WAShortTime(long long ts) {
 	static NSDateFormatter *weekday, *date;
-	if (!weekday) {
-		weekday = Formatter(@"EEEE");
-		date = Formatter(@"dd/MM/yy");
+	static NSUInteger gen;
+	if (!weekday || gen != WALanguageGeneration()) {
+		gen = WALanguageGeneration();
+		weekday = Formatter(@"EEEE", @"EEEE");
+		date = Formatter(@"dd/MM/yy", @"ddMMyy");
 	}
 	NSDate *d = [NSDate dateWithTimeIntervalSince1970:ts];
 	NSCalendar *cal = [NSCalendar currentCalendar];
@@ -25,8 +29,8 @@ NSString *WAShortTime(long long ts) {
 	[cal rangeOfUnit:NSDayCalendarUnit startDate:&today interval:NULL forDate:[NSDate date]];
 	NSTimeInterval diff = [d timeIntervalSinceDate:today];
 	if (diff >= 0) return WAClockTime(ts);
-	if (diff >= -86400) return @"Yesterday";
-	if (diff >= -6 * 86400) return [weekday stringFromDate:d];
+	if (diff >= -86400) return WAL(@"Yesterday");
+	if (diff >= -6 * 86400) return WACapitalized([weekday stringFromDate:d]);
 	return [date stringFromDate:d];
 }
 
@@ -35,23 +39,28 @@ NSString *WALastSeen(long long ts) {
 	NSDate *today = nil;
 	[[NSCalendar currentCalendar] rangeOfUnit:NSDayCalendarUnit startDate:&today interval:NULL forDate:[NSDate date]];
 	NSTimeInterval diff = [d timeIntervalSinceDate:today];
-	if (diff >= 0) return [NSString stringWithFormat:@"last seen today at %@", WAClockTime(ts)];
-	if (diff >= -86400) return [NSString stringWithFormat:@"last seen yesterday at %@", WAClockTime(ts)];
-	return [NSString stringWithFormat:@"last seen %@ at %@", WAShortTime(ts), WAClockTime(ts)];
+	if (diff >= 0) return [NSString stringWithFormat:WAL(@"last seen today at %@"), WAClockTime(ts)];
+	if (diff >= -86400) return [NSString stringWithFormat:WAL(@"last seen yesterday at %@"), WAClockTime(ts)];
+	return [NSString stringWithFormat:WAL(@"last seen %@ at %@"), WAShortTime(ts), WAClockTime(ts)];
 }
 
 NSString *WAFutureTime(long long ts) {
 	static NSDateFormatter *date;
-	if (!date) date = Formatter(@"dd/MM/yy");
+	static NSUInteger gen;
+	if (!date || gen != WALanguageGeneration()) {
+		date = Formatter(@"dd/MM/yy", @"ddMMyy");
+		gen = WALanguageGeneration();
+	}
 	if (ts - [[NSDate date] timeIntervalSince1970] < 86400) return WAClockTime(ts);
 	return [date stringFromDate:[NSDate dateWithTimeIntervalSince1970:ts]];
 }
 
 NSString *WAKindLabel(NSString *kind) {
 	static NSDictionary *labels;
-	if (!labels) labels = @{@"image": @"Photo", @"video": @"Video", @"audio": @"Audio", @"sticker": @"Sticker",
-		@"document": @"Document", @"location": @"Location", @"contact": @"Contact", @"call": @"Voice call"};
-	return labels[kind] ?: @"Message";
+	static NSUInteger gen;
+	if (!labels || gen != WALanguageGeneration()) gen = WALanguageGeneration(), labels = @{@"image": WAL(@"Photo"), @"video": WAL(@"Video"), @"audio": WAL(@"Audio"), @"sticker": WAL(@"Sticker"),
+		@"document": WAL(@"Document"), @"location": WAL(@"Location"), @"contact": WAL(@"Contact"), @"call": WAL(@"Voice call")};
+	return labels[kind] ?: WAL(@"Message");
 }
 
 NSString *WACallText(NSDictionary *m) {
@@ -61,14 +70,14 @@ NSString *WACallText(NSDictionary *m) {
 		NSInteger secs = [m[@"secs"] integerValue];
 		NSString *len = secs >= 3600 ? [NSString stringWithFormat:@"%ld:%02ld:%02ld", (long)(secs / 3600), (long)(secs / 60 % 60), (long)(secs % 60)]
 			: [NSString stringWithFormat:@"%ld:%02ld", (long)(secs / 60), (long)(secs % 60)];
-		return [NSString stringWithFormat:@"%@ voice call · %@", mine ? @"Outgoing" : @"Incoming", len];
+		return [NSString stringWithFormat:WAL(@"%@ voice call · %@"), mine ? WAL(@"Outgoing") : WAL(@"Incoming"), len];
 	}
-	if ([outcome isEqualToString:@"missed"]) return @"Missed voice call";
-	if ([outcome isEqualToString:@"declined"]) return @"Declined voice call";
-	if ([outcome isEqualToString:@"elsewhere"]) return @"Voice call on another device";
-	if ([outcome isEqualToString:@"cancelled"]) return @"Cancelled voice call";
-	if ([outcome isEqualToString:@"unanswered"]) return @"Voice call not answered";
-	return @"Voice call";
+	if ([outcome isEqualToString:@"missed"]) return WAL(@"Missed voice call");
+	if ([outcome isEqualToString:@"declined"]) return WAL(@"Declined voice call");
+	if ([outcome isEqualToString:@"elsewhere"]) return WAL(@"Voice call on another device");
+	if ([outcome isEqualToString:@"cancelled"]) return WAL(@"Cancelled voice call");
+	if ([outcome isEqualToString:@"unanswered"]) return WAL(@"Voice call not answered");
+	return WAL(@"Voice call");
 }
 
 UIColor *WAColor(unsigned rgb) {

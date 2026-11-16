@@ -179,6 +179,8 @@ static void FetchNext(NSMutableArray *queue, NSUInteger fetched, void (^finish)(
 	}];
 }
 
+NSString *const WAAssetsChangedNotification = @"WAAssetsChangedNotification";
+
 void WAAssetsSync(void (^changed)(void)) {
 	static BOOL running;
 	if (running || ![WAClient shared].configured) return;
@@ -190,6 +192,12 @@ void WAAssetsSync(void (^changed)(void)) {
 		for (NSDictionary *file in [files isKindOfClass:[NSArray class]] ? files : nil) {
 			NSString *name = [file isKindOfClass:[NSDictionary class]] ? file[@"name"] : nil;
 			if (!SafeName(name)) continue;
+			// whatsapp's translations: english (to look them up) and this iPhone's language only
+			NSRange lproj = [name rangeOfString:@".lproj/"];
+			if (lproj.location != NSNotFound) {
+				NSString *dir = [name substringToIndex:lproj.location];
+				if (![dir isEqualToString:@"en"] && ![dir isEqualToString:WALanguageDir()]) continue;
+			}
 			NSDictionary *attrs = [fm attributesOfItemAtPath:WAAssetPath(name) error:NULL];
 			if (!attrs || attrs.fileSize != [file[@"size"] unsignedLongLongValue]) [queue addObject:name];
 		}
@@ -201,7 +209,9 @@ void WAAssetsSync(void (^changed)(void)) {
 			if (!fetched) return;
 			WALog(@"assets: %lu files loaded", (unsigned long)fetched);
 			[imgCache removeAllObjects];
+			WALReload(); // texts too, shows on the next screen
 			if (changed) changed();
+			[[NSNotificationCenter defaultCenter] postNotificationName:WAAssetsChangedNotification object:nil];
 		});
 	}];
 }

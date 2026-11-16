@@ -5,6 +5,7 @@
 #import "WAVideoCall.h"
 #import "WAAssets.h"
 #import "WAClient.h"
+#import "WALocalize.h"
 
 // facetime graphics if present, else drawn
 static NSString *const kConference = @"/System/Library/PrivateFrameworks/Conference.framework";
@@ -93,7 +94,7 @@ static WAVideoCallViewController *current;
 	_pipLabel.font = [UIFont boldSystemFontOfSize:12];
 	_pipLabel.textColor = [UIColor whiteColor];
 	_pipLabel.backgroundColor = [UIColor clearColor];
-	_pipLabel.text = @"Camera off\nTap to turn on";
+	_pipLabel.text = WAL(@"Camera off\nTap to turn on");
 	[_pip addSubview:_pipLabel];
 	_pipFrame = [[UIImageView alloc] initWithFrame:pipRect];
 	_pipFrame.image = frame;
@@ -112,7 +113,7 @@ static WAVideoCallViewController *current;
 	_muteButton = [self barButton:@"barLeft" glyph:@"barMute" frame:CGRectMake(0, y, sideW, barH)];
 	[_muteButton addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
 	_endButton = [self barButton:@"barRightPressRed" glyph:@"barDecline" frame:CGRectMake(sideW, y, midW, barH)];
-	[_endButton setTitle:@" End" forState:UIControlStateNormal];
+	[_endButton setTitle:WAL(@" End") forState:UIControlStateNormal];
 	[_endButton addTarget:self action:@selector(end) forControlEvents:UIControlEventTouchUpInside];
 	if (!FTImg(@"barRightPressRed")) _endButton.backgroundColor = [UIColor colorWithRed:0.75 green:0.12 blue:0.12 alpha:1];
 	_switchButton = [self barButton:@"barRight" glyph:@"barCamera" frame:CGRectMake(sideW + midW, y, sideW, barH)];
@@ -177,7 +178,7 @@ static WAVideoCallViewController *current;
 	}
 	UIImage *g = FTImg(glyph);
 	if (g) [b setImage:g forState:UIControlStateNormal];
-	else [b setTitle:[glyph isEqualToString:@"barMute"] ? @"mute" : ([glyph isEqualToString:@"barCamera"] ? @"flip" : @"") forState:UIControlStateNormal];
+	else [b setTitle:[glyph isEqualToString:@"barMute"] ? WAL(@"mute") : ([glyph isEqualToString:@"barCamera"] ? WAL(@"flip") : @"") forState:UIControlStateNormal];
 	b.titleLabel.font = [UIFont boldSystemFontOfSize:18];
 	b.titleLabel.shadowOffset = CGSizeMake(0, -1);
 	[b setTitleShadowColor:[UIColor colorWithWhite:0 alpha:0.5] forState:UIControlStateNormal];
@@ -252,14 +253,14 @@ static WAVideoCallViewController *current;
 	NSString *state = info[@"state"] ?: @"ended";
 	BOOL ended = [state isEqualToString:@"ended"];
 	_nameLabel.text = [info[@"name"] length] ? info[@"name"] : @"WhatsApp";
-	if ([state isEqualToString:@"calling"]) _statusLabel.text = [info[@"callback"] boolValue] ? @"calling back…" : @"WhatsApp video…";
-	else if ([state isEqualToString:@"connecting"]) _statusLabel.text = @"connecting…";
+	if ([state isEqualToString:@"calling"]) _statusLabel.text = [info[@"callback"] boolValue] ? WAL(@"calling back…") : WAL(@"WhatsApp video…");
+	else if ([state isEqualToString:@"connecting"]) _statusLabel.text = WAL(@"connecting…");
 	else if ([state isEqualToString:@"active"]) {
 		int secs = call.activeSince ? (int)-[call.activeSince timeIntervalSinceNow] : 0;
 		_statusLabel.text = secs >= 3600 ? [NSString stringWithFormat:@"%d:%02d:%02d", secs / 3600, secs / 60 % 60, secs % 60]
 			: [NSString stringWithFormat:@"%02d:%02d", secs / 60, secs % 60];
-		if (!call.peerVideo) _statusLabel.text = [_statusLabel.text stringByAppendingString:@" · camera off"];
-	} else _statusLabel.text = @"call ended";
+		if (!call.peerVideo) _statusLabel.text = [_statusLabel.text stringByAppendingString:WAL(@" · camera off")];
+	} else _statusLabel.text = WAL(@"call ended");
 	[self layoutRemote];
 	AVCaptureSession *session = [WAVideoCall shared].session;
 	if (session && _preview.session != session) {

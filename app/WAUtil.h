@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "WALocalize.h"
 
 NSString *WAShortTime(long long ts); // chat list
 NSString *WAClockTime(long long ts); // bubble

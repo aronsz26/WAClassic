@@ -6,8 +6,9 @@ UIImage *WAImg(NSString *name);
 // mark_d in blue, 2.10 had no read tick
 UIImage *WAReadTick(void);
 // sync missing files from the bridge, copy launch image + sounds into the app, build ringtone.
-// changed is called when new pics arrived
+// changed is called when new pics arrived, WAAssetsChangedNotification too (setup syncs on its own)
 void WAAssetsSync(void (^changed)(void));
+extern NSString *const WAAssetsChangedNotification;
 // nil if it's still the empty placeholder
 NSString *WABundleFile(NSString *file);
 UIImage *WAStretch(NSString *name, CGFloat top, CGFloat left, CGFloat bottom, CGFloat right);

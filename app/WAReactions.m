@@ -211,8 +211,8 @@ static UIImage *PlusImage(void) {
 	[[WAClient shared] post:@"/api/react" params:@{@"chat": _jid, @"id": _message[@"id"], @"emoji": emoji}
 		completion:^(id json, NSError *error) {
 			if (!error) return;
-			[[[UIAlertView alloc] initWithTitle:@"Not sent" message:error.localizedDescription delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+			[[[UIAlertView alloc] initWithTitle:WAL(@"Not sent") message:error.localizedDescription delegate:nil
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 		}];
 	[self close];
 }
@@ -295,14 +295,18 @@ static NSString *ReactionTime(long long ts) {
 	[cal rangeOfUnit:NSDayCalendarUnit startDate:&today interval:NULL forDate:[NSDate date]];
 	NSTimeInterval diff = [d timeIntervalSinceDate:today];
 	NSString *day;
-	if (diff >= 0) day = @"Today";
-	else if (diff >= -86400) day = @"Yesterday";
+	if (diff >= 0) day = WAL(@"Today");
+	else if (diff >= -86400) day = WAL(@"Yesterday");
 	else {
-		NSDateFormatter *f = [[NSDateFormatter alloc] init];
-		f.dateFormat = @"dd/MM/yy";
+		static NSDateFormatter *f;
+		static NSUInteger gen;
+		if (!f || gen != WALanguageGeneration()) {
+			f = WADateFormatter(@"dd/MM/yy", @"ddMMyy");
+			gen = WALanguageGeneration();
+		}
 		day = [f stringFromDate:d];
 	}
-	return [NSString stringWithFormat:@"%@ at %@", day, WAClockTime(ts)];
+	return [NSString stringWithFormat:WAL(@"%@ at %@"), day, WAClockTime(ts)];
 }
 
 @implementation WAReactionsViewController {
@@ -316,7 +320,7 @@ static NSString *ReactionTime(long long ts) {
 		_jid = [jid copy];
 		_message = message;
 		_reactions = [[message[@"reactions"] reverseObjectEnumerator] allObjects]; // newest first
-		self.title = @"Reactions";
+		self.title = WAL(@"Reactions");
 	}
 	return self;
 }
@@ -380,8 +384,8 @@ static NSString *ReactionTime(long long ts) {
 	NSDictionary *r = _reactions[indexPath.row];
 	BOOL mine = [r[@"fromMe"] boolValue];
 	NSString *sender = r[@"sender"]; // own number = me
-	cell.name.text = mine ? @"You" : ([r[@"name"] length] ? r[@"name"] : r[@"sender"]);
-	cell.detail.text = mine ? @"Tap to remove" : ReactionTime([r[@"ts"] longLongValue]);
+	cell.name.text = mine ? WAL(@"You") : ([r[@"name"] length] ? r[@"name"] : r[@"sender"]);
+	cell.detail.text = mine ? WAL(@"Tap to remove") : ReactionTime([r[@"ts"] longLongValue]);
 	cell.emojiBadge.text = WAEmojiForDisplay(r[@"emoji"]);
 	cell.selectionStyle = mine ? UITableViewCellSelectionStyleBlue : UITableViewCellSelectionStyleNone;
 	cell.avatar.image = (sender ? [[WAClient shared] cachedAvatarFor:sender] : nil) ?: WAImg(@"EmptyContact");
@@ -398,7 +402,7 @@ static NSString *ReactionTime(long long ts) {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 	if (![_reactions[indexPath.row][@"fromMe"] boolValue]) return;
 	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil delegate:(id<UIActionSheetDelegate>)self
-		cancelButtonTitle:@"Cancel" destructiveButtonTitle:@"Remove Reaction" otherButtonTitles:nil];
+		cancelButtonTitle:WAL(@"Cancel") destructiveButtonTitle:WAL(@"Remove Reaction") otherButtonTitles:nil];
 	[sheet showInView:self.view];
 }
 
@@ -408,7 +412,7 @@ static NSString *ReactionTime(long long ts) {
 		completion:^(id json, NSError *error) {
 			if (error) {
 				[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil
-					cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+					cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 				return;
 			}
 			[self done];

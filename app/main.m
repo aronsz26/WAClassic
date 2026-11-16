@@ -34,6 +34,7 @@
 @property (nonatomic, strong) UINavigationController *setup;
 @property (nonatomic) BOOL bridgeVersionChecked; // once per start
 @property (nonatomic) BOOL assetsArrived; // rebuild tabs when nothing is open
+@property (nonatomic) BOOL languagePending; // whatsapp's texts for the new language still coming
 @end
 
 @implementation WAAppDelegate
@@ -72,6 +73,10 @@ static UINavigationController *Nav(UIViewController *root) {
 		name:WACallChangedNotification object:[WACall shared]];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(showSetup)
 		name:WALinkNeededNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(assetsChanged)
+		name:WAAssetsChangedNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(languageChanged)
+		name:WALanguageChangedNotification object:nil];
 	UILocalNotification *note = launchOptions[UIApplicationLaunchOptionsLocalNotificationKey];
 	if ([note.userInfo[@"call"] length]) [self answerCall:note.userInfo[@"call"]];
 	else if (note.userInfo[@"chat"]) [self openChat:note.userInfo[@"chat"]];
@@ -102,11 +107,39 @@ static UINavigationController *Nav(UIViewController *root) {
 // fetch assets, foreground only
 - (void)syncAssets {
 	if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground) return;
-	WAAssetsSync(^{
-		WABubblesReset();
-		self.assetsArrived = YES;
-		[self applyAssetsIfIdle];
-	});
+	WAAssetsSync(nil);
+}
+
+// new language: tabs again in it, back on Settings › Languages, then whatsapp's texts for it from the bridge
+- (void)languageChanged {
+	self.languagePending = YES;
+	[self rebuildForLanguage];
+	[self syncAssets];
+	// nothing to load (texts already here, old bridge): don't rebuild on some later change
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ self.languagePending = NO; });
+}
+
+- (void)rebuildForLanguage {
+	WABubblesReset();
+	UITabBarController *fresh = [self makeTabs];
+	fresh.selectedIndex = 4;
+	self.window.rootViewController = fresh;
+	UINavigationController *nav = fresh.viewControllers[4];
+	[nav pushViewController:[[WALanguagesController alloc] init] animated:NO];
+	if ([WAClient shared].configured) [self.chats reload];
+}
+
+- (void)assetsChanged {
+	if (self.languagePending) {
+		// the texts arrived, once more with them
+		self.languagePending = NO;
+		self.assetsArrived = NO;
+		[self rebuildForLanguage];
+		return;
+	}
+	WABubblesReset();
+	self.assetsArrived = YES;
+	[self applyAssetsIfIdle];
 }
 
 // rebuild tabs for new graphics, but not while something is open
@@ -167,9 +200,9 @@ static UINavigationController *Nav(UIViewController *root) {
 	// old bridges don't send one, own builds say dev
 	if ([bridge isEqualToString:@"dev"]) return;
 	if (bridge.length && [bridge compare:app options:NSNumericSearch] != NSOrderedAscending) return;
-	[[[UIAlertView alloc] initWithTitle:@"Update Your Bridge"
-		message:@"WA Classic was updated, but your bridge is still on an older version. Some things may not work. To update it, see guide.waclassic.com/updating on your computer."
-		delegate:nil cancelButtonTitle:@"Dismiss" otherButtonTitles:nil] show];
+	[[[UIAlertView alloc] initWithTitle:WAL(@"Update Your Bridge")
+		message:WAL(@"WA Classic was updated, but your bridge is still on an older version. Some things may not work. To update it, see guide.waclassic.com/updating on your computer.")
+		delegate:nil cancelButtonTitle:WAL(@"Dismiss") otherButtonTitles:nil] show];
 }
 
 // settings tooltip, once
@@ -182,7 +215,7 @@ static UINavigationController *Nav(UIViewController *root) {
 		UITabBar *bar = tabs.tabBar;
 		CGFloat itemW = bar.bounds.size.width / tabs.viewControllers.count;
 		CGPoint tip = [tabs.view convertPoint:CGPointMake(itemW * 4.5, 4) fromView:bar];
-		self.tooltip = [WATooltip showText:@"Edit your message notifications, set profile photo and many other things"
+		self.tooltip = [WATooltip showText:WAL(@"Edit your message notifications, set profile photo and many other things")
 			pointingAt:tip inView:tabs.view];
 		__weak WAAppDelegate *weak = self;
 		self.tooltip.onClose = ^{ [weak settingsTooltipDone]; };
@@ -284,6 +317,7 @@ static UINavigationController *Nav(UIViewController *root) {
 	long long now = (long long)[[NSDate date] timeIntervalSince1970];
 	for (NSDictionary *m in note.userInfo[@"messages"]) {
 		if ([m[@"fromMe"] boolValue] || [m[@"chat"] isEqualToString:openJID]) continue;
+		if ([m[@"muted"] boolValue]) continue;
 		if ([m[@"kind"] isEqualToString:@"call"]) continue;
 		if ([m[@"status"] intValue] >= 3 || [m[@"ts"] longLongValue] < now - 120) continue;
 		if ([self.shownBanners containsObject:m[@"seq"]]) continue;

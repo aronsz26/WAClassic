@@ -93,17 +93,136 @@
 
 @end
 
+// empty list and no answer: ios 6 style note (grey, white shadow, like "No Recents")
+@interface WANoNetworkView : UIView
+@property (nonatomic, strong) UILabel *titleLabel, *textLabel;
+@property (nonatomic, strong) UIImageView *glyph;
+@property (nonatomic, strong) UIButton *retry;
+@end
+
+@implementation WANoNetworkView
+
+// embossed wifi waves
++ (UIImage *)wavesGlyph {
+	CGSize s = CGSizeMake(70, 52);
+	UIGraphicsBeginImageContextWithOptions(s, NO, 0);
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetShadowWithColor(ctx, CGSizeMake(0, 1), 0, [UIColor whiteColor].CGColor);
+	[WAColor(0xAEB4BC) set];
+	CGPoint c = CGPointMake(35, 46);
+	for (int i = 1; i <= 3; i++) {
+		UIBezierPath *arc = [UIBezierPath bezierPathWithArcCenter:c radius:12 * i + 2 startAngle:M_PI * 1.25 endAngle:M_PI * 1.75 clockwise:YES];
+		arc.lineWidth = 6;
+		arc.lineCapStyle = kCGLineCapRound;
+		[arc stroke];
+	}
+	[[UIBezierPath bezierPathWithOvalInRect:CGRectMake(c.x - 4.5, c.y - 4.5, 9, 9)] fill];
+	UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+	UIGraphicsEndImageContext();
+	return img;
+}
+
+- (UILabel *)labelWithFont:(UIFont *)font {
+	UILabel *l = [[UILabel alloc] init];
+	l.font = font;
+	l.textColor = WAColor(0x7F8790);
+	l.shadowColor = [UIColor whiteColor];
+	l.shadowOffset = CGSizeMake(0, 1);
+	l.backgroundColor = [UIColor clearColor];
+	l.textAlignment = NSTextAlignmentCenter;
+	l.numberOfLines = 0;
+	[self addSubview:l];
+	return l;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	if ((self = [super initWithFrame:frame])) {
+		self.backgroundColor = [UIColor whiteColor];
+		_glyph = [[UIImageView alloc] initWithImage:[WANoNetworkView wavesGlyph]];
+		[self addSubview:_glyph];
+		_titleLabel = [self labelWithFont:[UIFont boldSystemFontOfSize:20]];
+		_textLabel = [self labelWithFont:[UIFont systemFontOfSize:15]];
+		_retry = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+		_retry.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+		[_retry setTitle:WAL(@"Try Again") forState:UIControlStateNormal];
+		[_retry setTitleColor:WAColor(0x37588C) forState:UIControlStateNormal];
+		[self addSubview:_retry];
+	}
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	CGFloat w = self.bounds.size.width, textW = w - 60;
+	CGSize title = [_titleLabel.text sizeWithFont:_titleLabel.font constrainedToSize:CGSizeMake(textW, 200)];
+	CGSize text = [_textLabel.text sizeWithFont:_textLabel.font constrainedToSize:CGSizeMake(textW, 200)];
+	CGSize g = _glyph.image.size;
+	CGFloat h = g.height + 18 + title.height + 8 + text.height + 22 + 34;
+	CGFloat y = MAX(20, roundf((self.bounds.size.height - h) / 2 - 10));
+	_glyph.frame = CGRectMake(roundf((w - g.width) / 2), y, g.width, g.height);
+	y += g.height + 18;
+	_titleLabel.frame = CGRectMake(30, y, textW, title.height);
+	y += title.height + 8;
+	_textLabel.frame = CGRectMake(30, y, textW, text.height);
+	y += text.height + 22;
+	_retry.frame = CGRectMake(roundf((w - 130) / 2), y, 130, 34);
+}
+
+@end
+
+@interface WAChatListViewController ()
+- (NSDictionary *)chatAtIndexPath:(NSIndexPath *)indexPath;
+- (instancetype)initArchivedOnly;
+- (void)updateTableHeader;
+- (UIView *)archivedRowWithWidth:(CGFloat)width;
+- (void)openArchivedChats;
+- (NSInteger)archivedCount;
+@end
+
+@interface WAArchivedGlyphView : UIView
+@end
+
+@implementation WAArchivedGlyphView
+- (void)drawRect:(CGRect)rect {
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSetStrokeColorWithColor(ctx, WAColor(0x7F7F7F).CGColor);
+	CGContextSetLineWidth(ctx, 1.3);
+	CGContextSetLineCap(ctx, kCGLineCapRound);
+	CGContextMoveToPoint(ctx, 3, 8);
+	CGContextAddLineToPoint(ctx, 3, 17);
+	CGContextAddLineToPoint(ctx, 17, 17);
+	CGContextAddLineToPoint(ctx, 17, 8);
+	CGContextMoveToPoint(ctx, 2, 7);
+	CGContextAddLineToPoint(ctx, 18, 7);
+	CGContextMoveToPoint(ctx, 10, 1);
+	CGContextAddLineToPoint(ctx, 10, 12);
+	CGContextMoveToPoint(ctx, 7, 9);
+	CGContextAddLineToPoint(ctx, 10, 12);
+	CGContextAddLineToPoint(ctx, 13, 9);
+	CGContextStrokePath(ctx);
+}
+@end
+
 @implementation WAChatListViewController {
 	NSArray *_chats;
+	NSError *_loadError;
+	WANoNetworkView *_noNetwork;
 	BOOL _loading;
+	BOOL _archivedOnly;
+	BOOL _showArchivedShortcut;
 	UIBarButtonItem *_penItem, *_deleteAllItem;
 	NSDictionary *_deleting; // nil = all
 }
 
+- (instancetype)initArchivedOnly {
+	if ((self = [self initWithStyle:UITableViewStylePlain])) _archivedOnly = YES;
+	return self;
+}
+
 - (instancetype)initWithStyle:(UITableViewStyle)style {
 	if ((self = [super initWithStyle:style])) {
-		self.title = @"Chats";
-		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Chats" image:WAImg(@"Chats") tag:3];
+		self.title = WAL(@"Chats");
+		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:WAL(@"Chats") image:WAImg(@"Chats") tag:3];
 	}
 	return self;
 }
@@ -111,16 +230,23 @@
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	self.tableView.rowHeight = 64;
-	self.navigationItem.leftBarButtonItem = self.editButtonItem;
-	self.editButtonItem.title = @"Edit";
+	if ([self.tableView respondsToSelector:@selector(setAlwaysBounceVertical:)]) self.tableView.alwaysBounceVertical = YES;
+	if (_archivedOnly) {
+		self.title = WAL(@"Archived");
+	} else {
+		self.navigationItem.leftBarButtonItem = self.editButtonItem;
+		self.editButtonItem.title = WAL(@"Edit");
+	}
 	UIImage *pen = [self whiteGlyph:WAImg(@"Pen")];
 	_penItem = pen
 		? [[UIBarButtonItem alloc] initWithImage:pen style:UIBarButtonItemStyleBordered target:self action:@selector(compose)]
 		: [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCompose target:self action:@selector(compose)];
-	_deleteAllItem = [[UIBarButtonItem alloc] initWithTitle:@"Delete All" style:UIBarButtonItemStyleBordered
+	_deleteAllItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Delete All") style:UIBarButtonItemStyleBordered
 		target:self action:@selector(deleteAllTapped)];
-	self.navigationItem.rightBarButtonItem = _penItem;
-	self.tableView.tableHeaderView = [self headerBar];
+	if (!_archivedOnly) {
+		self.navigationItem.rightBarButtonItem = _penItem;
+		[self updateTableHeader];
+	}
 	if (NSClassFromString(@"UIRefreshControl")) { // ios 6 only
 		UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
 		[refresh addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
@@ -128,6 +254,45 @@
 	}
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updatesArrived:)
 		name:WAClientUpdatesNotification object:nil];
+	// back online / other address: try again by itself
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(networkChanged)
+		name:WAClientNetworkChangedNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(networkChanged)
+		name:WAClientServerChangedNotification object:nil];
+}
+
+- (void)networkChanged {
+	if (!_loadError || ![WAClient shared].networkUp) {
+		[self updateEmptyState];
+		return;
+	}
+	// chooseServer is still asking, give it a moment
+	[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reload) object:nil];
+	[self performSelector:@selector(reload) withObject:nil afterDelay:1.5];
+}
+
+// note over the empty list when the bridge didn't answer. as footer so the button gets touches and no empty separators show
+- (void)updateEmptyState {
+	BOOL show = _loadError && !_chats.count;
+	if (!show) {
+		if (_noNetwork) {
+			self.tableView.tableFooterView = nil;
+			_noNetwork = nil;
+		}
+		return;
+	}
+	BOOL offline = ![WAClient shared].networkUp || _loadError.code == NSURLErrorNotConnectedToInternet;
+	CGFloat h = self.tableView.bounds.size.height - self.tableView.tableHeaderView.bounds.size.height;
+	if (!_noNetwork) {
+		_noNetwork = [[WANoNetworkView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.bounds.size.width, MAX(h, 280))];
+		[_noNetwork.retry addTarget:self action:@selector(reload) forControlEvents:UIControlEventTouchUpInside];
+	}
+	_noNetwork.titleLabel.text = offline ? WAL(@"No Network Connection") : WAL(@"Cannot Reach Your Bridge");
+	_noNetwork.textLabel.text = offline
+		? WAL(@"Your chats will show up as soon as your iPhone is connected to the Internet.")
+		: WAL(@"Make sure your bridge computer is turned on and connected.");
+	[_noNetwork setNeedsLayout];
+	if (self.tableView.tableFooterView != _noNetwork) self.tableView.tableFooterView = _noNetwork;
 }
 
 // broadcast / new group bar
@@ -138,12 +303,15 @@
 	line.backgroundColor = WAColor(0xB4BCC6);
 	line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[bar addSubview:line];
-	NSArray *titles = @[@"Broadcast Message", @"New Group"];
+	NSArray *titles = @[WAL(@"Broadcast Message"), WAL(@"New Group")];
 	CGRect frames[] = {CGRectMake(7, 7, 177, 30), CGRectMake(192, 7, 121, 30)};
 	for (NSUInteger i = 0; i < titles.count; i++) {
 		UIButton *b = [UIButton buttonWithType:UIButtonTypeRoundedRect];
 		b.frame = frames[i];
-		b.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+		// smaller font when the translation is long ("Nouveau groupe")
+		CGFloat size = 15;
+		while (size > 11 && [titles[i] sizeWithFont:[UIFont boldSystemFontOfSize:size]].width > b.frame.size.width - 14) size -= 0.5f;
+		b.titleLabel.font = [UIFont boldSystemFontOfSize:size];
 		[b setTitle:titles[i] forState:UIControlStateNormal];
 		[b setTitleColor:WAColor(0x37588C) forState:UIControlStateNormal];
 		[b addTarget:self action:i == 1 ? @selector(newGroup) : @selector(broadcast) forControlEvents:UIControlEventTouchUpInside];
@@ -193,8 +361,9 @@
 
 // edit mode
 - (void)setEditing:(BOOL)editing animated:(BOOL)animated {
+	if (_archivedOnly) return;
 	[super setEditing:editing animated:animated];
-	self.editButtonItem.title = editing ? @"Done" : @"Edit";
+	self.editButtonItem.title = editing ? WAL(@"Done") : WAL(@"Edit");
 	[self.navigationItem setRightBarButtonItem:editing ? _deleteAllItem : _penItem animated:animated];
 }
 
@@ -203,21 +372,22 @@
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)indexPath {
-	if (style != UITableViewCellEditingStyleDelete || indexPath.row >= (NSInteger)_chats.count) return;
-	_deleting = _chats[indexPath.row];
-	[self askHowToDelete:[NSString stringWithFormat:@"Delete All Chat History with “%@”", _deleting[@"name"]]];
+	if (style != UITableViewCellEditingStyleDelete) return;
+	_deleting = [self chatAtIndexPath:indexPath];
+	if (!_deleting) return;
+	[self askHowToDelete:[NSString stringWithFormat:WAL(@"Delete All Chat History with “%@”"), _deleting[@"name"]]];
 }
 
 - (void)deleteAllTapped {
 	if (!_chats.count) return;
 	_deleting = nil;
-	[self askHowToDelete:@"Delete All Chat History with All Contacts"];
+	[self askHowToDelete:WAL(@"Delete All Chat History with All Contacts")];
 }
 
 // delete here only or everywhere
 - (void)askHowToDelete:(NSString *)title {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:title delegate:self cancelButtonTitle:@"Cancel"
-		destructiveButtonTitle:@"Delete Everywhere" otherButtonTitles:@"Delete on This iPhone", nil];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:title delegate:self cancelButtonTitle:WAL(@"Cancel")
+		destructiveButtonTitle:WAL(@"Delete Everywhere") otherButtonTitles:WAL(@"Delete on This iPhone"), nil];
 	sheet.tag = 7;
 	[sheet showInView:self.tabBarController.view ?: self.view];
 }
@@ -239,8 +409,7 @@
 		[left removeObject:chat];
 		_chats = left;
 		if (row != NSNotFound) {
-			[self.tableView deleteRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:0]]
-				withRowAnimation:UITableViewRowAnimationFade];
+			[self.tableView reloadData];
 		}
 	} else {
 		_chats = @[];
@@ -249,8 +418,8 @@
 	}
 	[[WAClient shared] post:@"/api/chat/delete" params:params completion:^(id json, NSError *error) {
 		if (error) {
-			[[[UIAlertView alloc] initWithTitle:@"Not deleted" message:error.localizedDescription delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+			[[[UIAlertView alloc] initWithTitle:WAL(@"Not deleted") message:error.localizedDescription delegate:nil
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 		}
 		[self reload];
 	}];
@@ -280,12 +449,17 @@
 	[client get:@"/api/chats" params:nil completion:^(id json, NSError *error) {
 		self->_loading = NO;
 		[self endRefreshing];
+		self->_loadError = error;
 		if (error) {
-			self.title = @"Waiting for network";
+			self.navigationItem.title = WAL(@"Waiting for network"); // not self.title, that renames the tab too
+			[self updateEmptyState];
 			return;
 		}
-		self.title = @"Chats";
+		self.navigationItem.title = self->_archivedOnly ? WAL(@"Archived") : WAL(@"Chats");
 		self->_chats = json[@"chats"];
+		if (![self archivedCount]) self->_showArchivedShortcut = NO;
+		if (!self->_archivedOnly) [self updateTableHeader];
+		[self updateEmptyState];
 		[self.tableView reloadData];
 		[self updateBadge];
 		[client startUpdatesFrom:[json[@"upd"] longLongValue]];
@@ -295,6 +469,7 @@
 - (void)updateBadge {
 	NSInteger unread = 0, chats = 0;
 	for (NSDictionary *c in _chats) {
+		if ([c[@"archived"] boolValue]) continue; // like WhatsApp, archived chats don't count
 		NSInteger n = [c[@"unread"] integerValue];
 		unread += n;
 		if (n) chats++;
@@ -302,7 +477,7 @@
 	[UIApplication sharedApplication].applicationIconBadgeNumber = unread;
 	self.navigationController.tabBarItem.badgeValue = chats ? [@(chats) description] : nil;
 	// "Chats (1)" back button
-	NSString *back = chats ? [NSString stringWithFormat:@"Chats (%ld)", (long)chats] : @"Chats";
+	NSString *back = chats ? [NSString stringWithFormat:WAL(@"Chats (%ld)"), (long)chats] : WAL(@"Chats");
 	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:back style:UIBarButtonItemStyleBordered
 		target:nil action:nil];
 }
@@ -317,13 +492,102 @@
 #pragma mark - Table
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return _chats.count;
+	NSInteger count = 0;
+	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue] == _archivedOnly) count++;
+	return count;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return 1;
+}
+
+- (NSInteger)archivedCount {
+	NSInteger count = 0;
+	for (NSDictionary *chat in _chats) if ([chat[@"archived"] boolValue]) count++;
+	return count;
+}
+
+// table header = broadcast/group bar, plus the archived row once pulled. scrolls with the chats, a section header would stick
+- (void)updateTableHeader {
+	CGFloat w = self.tableView.bounds.size.width ?: 320;
+	BOOL archived = _showArchivedShortcut && [self archivedCount];
+	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, archived ? 88 : 44)];
+	UIView *bar = [self headerBar];
+	bar.frame = CGRectMake(0, 0, w, 44);
+	bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	[header addSubview:bar];
+	if (archived) {
+		UIView *row = [self archivedRowWithWidth:w];
+		row.frame = CGRectMake(0, 44, w, 44);
+		[header addSubview:row];
+	}
+	self.tableView.tableHeaderView = header;
+}
+
+- (UIView *)archivedRowWithWidth:(CGFloat)width {
+	UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 44)];
+	row.backgroundColor = [UIColor whiteColor];
+	row.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+	button.frame = row.bounds;
+	button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+	[button addTarget:self action:@selector(openArchivedChats) forControlEvents:UIControlEventTouchUpInside];
+	WAArchivedGlyphView *glyph = [[WAArchivedGlyphView alloc] initWithFrame:CGRectMake(18, 13, 20, 18)];
+	glyph.backgroundColor = [UIColor clearColor];
+	[button addSubview:glyph];
+	UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(58, 0, 190, 44)];
+	title.text = WAL(@"Archived");
+	title.font = [UIFont systemFontOfSize:16];
+	title.textColor = WAColor(0x37588C);
+	title.backgroundColor = [UIColor clearColor];
+	[button addSubview:title];
+	UILabel *count = [[UILabel alloc] initWithFrame:CGRectMake(width - 48, 0, 30, 44)];
+	count.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+	count.text = [NSString stringWithFormat:@"%ld", (long)[self archivedCount]];
+	count.textAlignment = NSTextAlignmentRight;
+	count.font = [UIFont systemFontOfSize:14];
+	count.textColor = WAColor(0x7F7F7F);
+	count.backgroundColor = [UIColor clearColor];
+	[button addSubview:count];
+	UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 43, width, 1)];
+	line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	line.backgroundColor = WAColor(0xE5E5E5);
+	[button addSubview:line];
+	[row addSubview:button];
+	return row;
+}
+
+- (NSDictionary *)chatAtIndexPath:(NSIndexPath *)indexPath {
+	NSInteger row = 0;
+	for (NSDictionary *chat in _chats) {
+		if ([chat[@"archived"] boolValue] != _archivedOnly) continue;
+		if (row++ == indexPath.row) return chat;
+	}
+	return nil;
+}
+
+- (void)openArchivedChats {
+	WAChatListViewController *archived = [[WAChatListViewController alloc] initArchivedOnly];
+	[self.navigationController pushViewController:archived animated:YES];
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	if (_archivedOnly || _showArchivedShortcut || ![self archivedCount]) return;
+	// Reveal the shortcut with a light pull, before the refresh control's trigger distance.
+	if (scrollView.contentOffset.y < -44) {
+		_showArchivedShortcut = YES;
+		[self.tableView beginUpdates];
+		[self updateTableHeader];
+		[self.tableView endUpdates];
+	}
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	WAChatCell *cell = [tableView dequeueReusableCellWithIdentifier:@"chat"];
 	if (!cell) cell = [[WAChatCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"chat"];
-	NSDictionary *chat = _chats[indexPath.row];
+	NSDictionary *chat = [self chatAtIndexPath:indexPath];
+	if (!chat) return cell;
 	BOOL group = [chat[@"group"] boolValue];
 	NSString *jid = chat[@"jid"];
 	cell.jid = jid;
@@ -338,12 +602,12 @@
 		text = WACallText(@{@"text": text ?: @"", @"fromMe": @(fromMe), @"secs": chat[@"lastSecs"] ?: @0});
 	} else if ([kind isEqualToString:@"audio"]) {
 		NSInteger secs = [chat[@"lastSecs"] integerValue];
-		text = secs ? [NSString stringWithFormat:@"%ld:%02ld", (long)(secs / 60), (long)(secs % 60)] : @"Audio";
+		text = secs ? [NSString stringWithFormat:@"%ld:%02ld", (long)(secs / 60), (long)(secs % 60)] : WAL(@"Audio");
 	}
 	NSString *sender = chat[@"lastSenderName"];
 	cell.senderLabel.hidden = !(group && !fromMe && sender.length);
 	cell.senderLabel.text = [sender stringByAppendingString:@":"];
-	if (group && fromMe && ![kind isEqualToString:@"system"]) text = [@"You: " stringByAppendingString:text ?: @""];
+	if (group && fromMe && ![kind isEqualToString:@"system"]) text = [WAL(@"You: ") stringByAppendingString:text ?: @""];
 	cell.lastLabel.text = text;
 
 	// tick/mic icon
@@ -370,7 +634,8 @@
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-	NSDictionary *chat = _chats[indexPath.row];
+	NSDictionary *chat = [self chatAtIndexPath:indexPath];
+	if (!chat) return;
 	WAChatViewController *vc = [[WAChatViewController alloc] initWithChat:chat];
 	[self.navigationController pushViewController:vc animated:YES];
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];

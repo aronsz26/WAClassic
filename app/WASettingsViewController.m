@@ -1,6 +1,7 @@
 #import "WASettingsViewController.h"
 #import "WAClient.h"
 #import "WAAssets.h"
+#import "WALocalize.h"
 
 @implementation WASettingsViewController {
 	UITextField *_homeField, *_awayField, *_tokenField, *_pinField;
@@ -9,7 +10,7 @@
 
 - (instancetype)init {
 	if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
-		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Settings" image:WAImg(@"Settings") tag:4];
+		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:WAL(@"Settings") image:WAImg(@"Settings") tag:4];
 	}
 	return self;
 }
@@ -21,14 +22,14 @@
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Network Status";
+	self.title = WAL(@"Network Status");
 	WAClient *c = [WAClient shared];
 	_homeField = [self fieldWithText:c.homeURL placeholder:@"http://192.168.1.20:8097"];
 	_awayField = [self fieldWithText:c.awayURL placeholder:@"https://…:25567"];
 	_homeField.keyboardType = _awayField.keyboardType = UIKeyboardTypeURL;
-	_tokenField = [self fieldWithText:c.token placeholder:@"Key"];
+	_tokenField = [self fieldWithText:c.token placeholder:WAL(@"Key")];
 	_tokenField.secureTextEntry = YES;
-	_pinField = [self fieldWithText:c.pin placeholder:@"SHA-256 of the certificate"];
+	_pinField = [self fieldWithText:c.pin placeholder:WAL(@"SHA-256 of the certificate")];
 	[self check];
 }
 
@@ -57,15 +58,15 @@
 - (void)check {
 	WAClient *c = [WAClient shared];
 	if (!c.configured) {
-		_statusText = @"Enter address and key";
+		_statusText = WAL(@"Enter address and key");
 		[self.tableView reloadData];
 		return;
 	}
-	_statusText = @"Checking…";
+	_statusText = WAL(@"Checking…");
 	[self.tableView reloadData];
 	[c chooseServer:^(BOOL reachable) {
 		if (!reachable) {
-			self->_statusText = @"Bridge not reachable";
+			self->_statusText = WAL(@"Bridge not reachable");
 			[self.tableView reloadData];
 			return;
 		}
@@ -75,17 +76,17 @@
 
 - (void)status {
 	WAClient *c = [WAClient shared];
-	NSString *where = c.away ? @"away" : @"home";
+	NSString *where = c.away ? WAL(@"away") : WAL(@"home");
 	[c get:@"/api/status" params:nil completion:^(id json, NSError *error) {
 		if (error) {
 			self->_statusText = error.localizedDescription;
 		} else if (![json[@"paired"] boolValue]) {
-			self->_statusText = @"Bridge running, but not linked";
+			self->_statusText = WAL(@"Bridge running, but not linked");
 		} else {
 			c.ownJID = json[@"jid"];
 			self->_statusText = [json[@"connected"] boolValue]
-				? [NSString stringWithFormat:@"Connected as %@ (%@)", json[@"pushName"] ?: @"?", where]
-				: @"Bridge reached, WhatsApp disconnected";
+				? [NSString stringWithFormat:WAL(@"Connected as %@ (%@)"), json[@"pushName"] ?: @"?", where]
+				: WAL(@"Bridge reached, WhatsApp disconnected");
 		}
 		[self.tableView reloadData];
 	}];
@@ -112,21 +113,28 @@
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	return section == 0 ? @"WA Classic Bridge" : @"Status";
+	return section == 0 ? @"WA Classic Bridge" : WAL(@"Status");
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-	return section == 1 ? @"WA Classic is an unofficial client, not affiliated with WhatsApp or Meta. It runs as a linked device through your own bridge." : nil;
+	return section == 1 ? WAL(@"WA Classic is an unofficial client, not affiliated with WhatsApp or Meta. It runs as a linked device through your own bridge.") : nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
 	cell.selectionStyle = UITableViewCellSelectionStyleNone;
 	if (indexPath.section == 0) {
-		NSArray *titles = @[@"Home", @"Away", @"Key", @"Certificate"];
+		NSArray *titles = @[WAL(@"Home"), WAL(@"Away"), WAL(@"Key"), WAL(@"Certificate")];
 		NSArray *fields = @[_homeField, _awayField, _tokenField, _pinField];
+		// longer words in other languages ("Certificato"): field gets what the widest title leaves
+		CGFloat titleW = 0;
+		for (NSString *t in titles) titleW = MAX(titleW, [t sizeWithFont:[UIFont boldSystemFontOfSize:17]].width);
+		UITextField *field = fields[indexPath.row];
+		CGRect r = field.frame;
+		r.size.width = MAX(110, MIN(190, tableView.bounds.size.width - 20 - 20 - titleW - 14));
+		field.frame = r;
 		cell.textLabel.text = titles[indexPath.row];
-		cell.accessoryView = fields[indexPath.row];
+		cell.accessoryView = field;
 	} else {
 		cell.textLabel.text = _statusText;
 		cell.textLabel.font = [UIFont systemFontOfSize:15];

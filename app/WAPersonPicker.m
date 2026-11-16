@@ -10,7 +10,7 @@
 }
 
 - (instancetype)init {
-	if ((self = [super initWithStyle:UITableViewStylePlain])) self.title = @"New Message";
+	if ((self = [super initWithStyle:UITableViewStylePlain])) self.title = WAL(@"New Message");
 	return self;
 }
 
@@ -18,7 +18,7 @@
 	[super viewDidLoad];
 	self.tableView.rowHeight = 50;
 	_search = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
-	_search.placeholder = @"Search";
+	_search.placeholder = WAL(@"Search");
 	_search.delegate = self;
 	_search.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	self.tableView.tableHeaderView = _search;
@@ -106,7 +106,7 @@
 			cell.textLabel.font = [UIFont boldSystemFontOfSize:16];
 			cell.textLabel.textColor = [UIColor colorWithWhite:0.5 alpha:1];
 		} else {
-			cell.textLabel.text = @"No Contacts";
+			cell.textLabel.text = WAL(@"No Contacts");
 			cell.textLabel.font = [UIFont boldSystemFontOfSize:18];
 			cell.textLabel.textColor = [UIColor colorWithWhite:0.8 alpha:1];
 		}

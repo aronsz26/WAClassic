@@ -55,6 +55,13 @@ fi
 test -f WA4S
 rm -rf layout && mkdir -p layout/Applications layout/DEBIAN
 cp -r app/Resources layout/Applications/WA4S.app
+# our own translations (english text -> text), json in the repo, plist in the app
+for f in app/i18n/*.json; do
+  [ -f "$f" ] || continue
+  l=$(basename "$f" .json)
+  mkdir -p "layout/Applications/WA4S.app/$l.lproj"
+  python3 -c "import json,plistlib,sys; plistlib.dump(json.load(open(sys.argv[1])),open(sys.argv[2],'wb'),fmt=plistlib.FMT_BINARY)" "$f" "layout/Applications/WA4S.app/$l.lproj/WAClassic.strings"
+done
 if [ "$IOS4" = 1 ]; then
   plutil() { python3 -c "import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,'rb')); d['MinimumOSVersion']='4.3'; plistlib.dump(d,open(p,'wb'))" "$1"; }
   plutil layout/Applications/WA4S.app/Info.plist
@@ -81,7 +88,7 @@ mkdir -p $TW
   -dynamiclib -install_name /Library/MobileSubstrate/DynamicLibraries/WACallScreen.dylib \
   -framework UIKit -framework Foundation -framework CoreGraphics -framework QuartzCore -lobjc \
   -Wl,-flat_namespace -Wl,-U,'_OBJC_CLASS_$_NSObject' -Wl,-U,'_OBJC_METACLASS_$_NSObject' \
-  -o $TW/WACallScreen.dylib app/callscreen/WACallScreen.m 2>&1 | grep -v 'built for iOS Simulator' || true
+  -Iapp -o $TW/WACallScreen.dylib app/callscreen/WACallScreen.m app/WALocalize.m 2>&1 | grep -v 'built for iOS Simulator' || true
 test -f $TW/WACallScreen.dylib
 "$LDID" -S $TW/WACallScreen.dylib
 printf '{ Filter = { Bundles = ( "com.apple.springboard" ); }; }\n' > $TW/WACallScreen.plist

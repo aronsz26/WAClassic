@@ -17,6 +17,9 @@ import (
 
 // mutedUntil: 0 = not muted, -1 = forever, else unix time.
 func (b *Bridge) mutedUntil(ctx context.Context, chat types.JID) int64 {
+	if b.cli.Store.ChatSettings == nil { // not linked
+		return 0
+	}
 	s, err := b.cli.Store.ChatSettings.GetChatSettings(ctx, chat)
 	if err != nil || !s.Found || s.MutedUntil.IsZero() {
 		return 0
@@ -30,7 +33,11 @@ func (b *Bridge) mutedUntil(ctx context.Context, chat types.JID) int64 {
 	return s.MutedUntil.Unix()
 }
 
+// for notifications: archived chats stay quiet too (calls still ring)
 func (b *Bridge) isMuted(ctx context.Context, chat string) bool {
+	if b.store.IsArchived(chat) {
+		return true
+	}
 	jid, err := types.ParseJID(chat)
 	return err == nil && b.mutedUntil(ctx, jid) != 0
 }

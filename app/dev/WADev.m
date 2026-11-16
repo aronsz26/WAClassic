@@ -54,6 +54,7 @@ static void PlaceCorner(void) {
 @end
 
 static void ShowCorner(void) {
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"devNoCorner"]) return; // screenshots for the website
 	UILabel *label = [[UILabel alloc] init];
 	label.text = [@"internal version " stringByAppendingString:WADevVersion()];
 	label.font = [UIFont boldSystemFontOfSize:9];
@@ -190,6 +191,15 @@ static void CallsCommand(NSString *what) {
 
 // setup pages without unlinking: hello (whole new flow, Done = close), hellodiag, hellothanks, helloterms
 static void HelloCommand(NSString *what) {
+	if ([what isEqualToString:@"hellolookdl"]) {
+		// on the open look page: Download, Next
+		UIViewController *look = commandNav.topViewController;
+		if (![look isKindOfClass:[WALookChoiceViewController class]]) return;
+		[(id<UITableViewDelegate>)look tableView:((WALookChoiceViewController *)look).tableView
+			didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+		[look performSelector:NSSelectorFromString(@"next")];
+		return;
+	}
 	// not animated, presenting from a page that's still going away crashes
 	[commandNav dismissViewControllerAnimated:NO completion:nil];
 	commandNav = nil;
@@ -212,6 +222,11 @@ static void HelloCommand(NSString *what) {
 		WAHowItWorksViewController *terms = [[WAHowItWorksViewController alloc] init];
 		terms.ios5Style = YES;
 		page = terms;
+	} else if ([what isEqualToString:@"hellolook"]) {
+		// the bridge page, then Next's decision: look page or qr code
+		WAConnectViewController *c = [[WAConnectViewController alloc] init];
+		c.ios5Style = YES;
+		page = c;
 	} else page = [[WAHelloViewController alloc] init];
 	commandNav = [[UINavigationController alloc] initWithRootViewController:page];
 	[page setValue:^{ [WADevCloser close]; } forKey:@"finished"];
@@ -220,6 +235,8 @@ static void HelloCommand(NSString *what) {
 	UIViewController *top = mainWindow.rootViewController;
 	while (top.presentedViewController) top = top.presentedViewController;
 	[top presentViewController:commandNav animated:NO completion:nil];
+	if ([what isEqualToString:@"hellolook"])
+		[WALookChoiceViewController pushNextFrom:page ios5Style:YES finished:^{ [WADevCloser close]; } done:nil];
 }
 
 // junk of growing size to /api/sendimage without a chat over the current server: the bridge reads it
@@ -237,11 +254,93 @@ static void UploadTest(NSArray *sizes) {
 	}];
 }
 
+// keyboard tweaks (ColorKeyboard etc.): field on top, cycles keyboard types = new keyplanes.
+// kbtest starts, kbtestend hides it. log "dev: kbtest ..."
+static UITextField *kbField;
+static void KeyboardStep(NSUInteger i) {
+	static const UIKeyboardType types[] = {UIKeyboardTypeDefault, UIKeyboardTypeNumbersAndPunctuation, UIKeyboardTypeEmailAddress,
+		UIKeyboardTypeURL, UIKeyboardTypeNumberPad, UIKeyboardTypeTwitter, UIKeyboardTypeDecimalPad, UIKeyboardTypeDefault};
+	const NSUInteger count = sizeof(types) / sizeof(types[0]);
+	if (!kbField || i >= count * 3) {
+		WALog(@"dev: kbtest done");
+		return;
+	}
+	kbField.keyboardType = types[i % count];
+	kbField.autocapitalizationType = i % 2 ? UITextAutocapitalizationTypeNone : UITextAutocapitalizationTypeSentences; // shift on/off
+	[kbField reloadInputViews];
+	WALog(@"dev: kbtest step %lu type %d", (unsigned long)i, (int)types[i % count]);
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ KeyboardStep(i + 1); });
+}
+
+static void KeyboardTest(BOOL start) {
+	[kbField resignFirstResponder];
+	[kbField removeFromSuperview];
+	kbField = nil;
+	if (!start) return;
+	kbField = [[UITextField alloc] initWithFrame:CGRectMake(10, 30, mainWindow.bounds.size.width - 20, 34)];
+	kbField.borderStyle = UITextBorderStyleRoundedRect;
+	kbField.placeholder = @"Keyboard test";
+	[mainWindow addSubview:kbField];
+	[kbField becomeFirstResponder];
+	KeyboardStep(0);
+}
+
+// walking screens without tapping: tab0-4, row<section>_<row> on the table in front, back
+static UIViewController *FrontController(void) {
+	UIViewController *top = mainWindow.rootViewController;
+	while (top.presentedViewController) top = top.presentedViewController;
+	if ([top isKindOfClass:[UITabBarController class]]) top = [(UITabBarController *)top selectedViewController];
+	if ([top isKindOfClass:[UINavigationController class]]) top = [(UINavigationController *)top topViewController];
+	return top;
+}
+
+static UITableView *FindTable(UIView *v) {
+	if ([v isKindOfClass:[UITableView class]]) return (UITableView *)v;
+	for (UIView *sub in v.subviews) {
+		UITableView *t = FindTable(sub);
+		if (t) return t;
+	}
+	return nil;
+}
+
+static void NavCommand(NSString *what) {
+	UIViewController *front = FrontController();
+	if ([what hasPrefix:@"tab"]) {
+		UITabBarController *tabs = (UITabBarController *)mainWindow.rootViewController;
+		NSUInteger i = (NSUInteger)[[what substringFromIndex:3] integerValue];
+		if (![tabs isKindOfClass:[UITabBarController class]] || i >= tabs.viewControllers.count) return;
+		tabs.selectedIndex = i;
+		[(UINavigationController *)tabs.selectedViewController popToRootViewControllerAnimated:NO];
+	} else if ([what isEqualToString:@"back"]) {
+		if (front.navigationController.viewControllers.count > 1) [front.navigationController popViewControllerAnimated:NO];
+		else if (front.presentingViewController) [front dismissViewControllerAnimated:NO completion:nil];
+	} else if ([what isEqualToString:@"pull"]) {
+		// light pull on the table in front, like a finger (chat list: archived row)
+		UITableView *table = FindTable(front.view);
+		CGPoint top = table.contentOffset;
+		table.contentOffset = CGPointMake(0, top.y - 60);
+		table.contentOffset = top;
+	} else if ([what hasPrefix:@"row"]) {
+		NSArray *parts = [[what substringFromIndex:3] componentsSeparatedByString:@"_"];
+		UITableView *table = FindTable(front.view);
+		if (parts.count != 2 || !table) return;
+		NSIndexPath *ip = [NSIndexPath indexPathForRow:[parts[1] integerValue] inSection:[parts[0] integerValue]];
+		if (ip.section >= table.numberOfSections || ip.row >= [table numberOfRowsInSection:ip.section]) return;
+		[table scrollToRowAtIndexPath:ip atScrollPosition:UITableViewScrollPositionMiddle animated:NO];
+		if ([table.delegate respondsToSelector:@selector(tableView:didSelectRowAtIndexPath:)])
+			[table.delegate tableView:table didSelectRowAtIndexPath:ip];
+	}
+	WALog(@"dev: %@ -> %@", what, NSStringFromClass([FrontController() class]));
+}
+
 static void Command(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef info) {
 	NSString *what = [(__bridge NSString *)name pathExtension];
 	WALog(@"dev: command %@", what);
 	if ([what hasPrefix:@"calls"]) CallsCommand(what);
 	else if ([what hasPrefix:@"hello"]) HelloCommand(what);
+	else if ([what hasPrefix:@"tab"] || [what hasPrefix:@"row"] || [what isEqualToString:@"back"] || [what isEqualToString:@"pull"]) NavCommand(what);
+	else if ([what isEqualToString:@"kbtest"]) KeyboardTest(YES);
+	else if ([what isEqualToString:@"kbtestend"]) KeyboardTest(NO);
 	else if ([what isEqualToString:@"uploadtest"]) UploadTest(@[@20000, @300000, @1000000, @3000000]);
 	else if ([what isEqualToString:@"statustab"]) SetStatusTab(!StatusTabOn());
 	else if ([what isEqualToString:@"menu"]) Show(nil);
@@ -282,7 +381,16 @@ void WADevStart(UIWindow *window) {
 		WADevCount.networkChanges++;
 	}];
 	for (NSString *what in @[@"menu", @"tests", @"stats", @"manual", @"log", @"close", @"message", @"clear", @"ring", @"hangup", @"banner",
-		@"calls", @"callsall", @"callsmissed", @"callsnew", @"callsedit", @"statustab", @"hello", @"hellodiag", @"hellothanks", @"helloterms", @"helloconnect", @"helloqr", @"helloloading", @"uploadtest"]) {
+		@"calls", @"callsall", @"callsmissed", @"callsnew", @"callsedit", @"statustab", @"hello", @"hellodiag", @"hellothanks", @"helloterms", @"helloconnect", @"helloqr", @"helloloading", @"hellolook", @"hellolookdl", @"kbtest", @"kbtestend", @"uploadtest"]) {
+		NSString *name = [@"com.aronsz26.wa4s.dev." stringByAppendingString:what];
+		CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, Command, (__bridge CFStringRef)name, NULL,
+			CFNotificationSuspensionBehaviorDeliverImmediately);
+	}
+	NSMutableArray *nav = [NSMutableArray arrayWithObjects:@"back", @"pull", nil];
+	for (int i = 0; i < 5; i++) [nav addObject:[NSString stringWithFormat:@"tab%d", i]];
+	for (int sec = 0; sec < 6; sec++)
+		for (int row = 0; row < 12; row++) [nav addObject:[NSString stringWithFormat:@"row%d_%d", sec, row]];
+	for (NSString *what in nav) {
 		NSString *name = [@"com.aronsz26.wa4s.dev." stringByAppendingString:what];
 		CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, Command, (__bridge CFStringRef)name, NULL,
 			CFNotificationSuspensionBehaviorDeliverImmediately);

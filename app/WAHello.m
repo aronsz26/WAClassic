@@ -210,7 +210,7 @@ static void UseBlackBar(UIViewController *vc) {
 	[_knob addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)]];
 	[self addSubview:_knob];
 	self.isAccessibilityElement = YES;
-	self.accessibilityLabel = [@"Slide to " stringByAppendingString:text];
+	self.accessibilityLabel = [WAL(@"Slide to ") stringByAppendingString:text];
 	return self;
 }
 
@@ -306,7 +306,7 @@ static void UseBlackBar(UIViewController *vc) {
 		UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
 	[v addSubview:titleView];
 	UILabel *small = [[UILabel alloc] initWithFrame:CGRectMake(20, CGRectGetMaxY(titleView.frame) + 4, w - 40, 22)];
-	small.text = @"WhatsApp for your classic iPhone";
+	small.text = WAL(@"WhatsApp for your classic iPhone");
 	small.font = [UIFont fontWithName:@"Helvetica" size:15];
 	small.textColor = [UIColor colorWithWhite:0.86f alpha:1];
 	small.shadowColor = [UIColor colorWithWhite:0 alpha:0.6f];
@@ -315,7 +315,7 @@ static void UseBlackBar(UIViewController *vc) {
 	small.textAlignment = NSTextAlignmentCenter;
 	[v addSubview:small];
 
-	_slider = [[WASetupSlider alloc] initWithFrame:CGRectMake(0, h - 96, w, 96) text:@"set up"];
+	_slider = [[WASetupSlider alloc] initWithFrame:CGRectMake(0, h - 96, w, 96) text:WAL(@"set up")];
 	_slider.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 	__weak WAHelloViewController *weak = self;
 	_slider.done = ^{ [weak next]; };
@@ -357,12 +357,12 @@ static void UseBlackBar(UIViewController *vc) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Diagnostics";
+	self.title = WAL(@"Diagnostics");
 	self.tableView.backgroundView = LinenView(self.tableView.bounds);
-	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Next"
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Next")
 		style:UIBarButtonItemStyleDone target:self action:@selector(next)];
 	self.navigationItem.rightBarButtonItem.enabled = NO;
-	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Back"
+	self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Back")
 		style:UIBarButtonItemStyleBordered target:nil action:nil];
 }
 
@@ -377,7 +377,7 @@ static void UseBlackBar(UIViewController *vc) {
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-	cell.textLabel.text = indexPath.row == 0 ? @"Automatically Send" : @"Don't Send";
+	cell.textLabel.text = indexPath.row == 0 ? WAL(@"Automatically Send") : WAL(@"Don't Send");
 	cell.accessoryType = indexPath.row == _choice ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
 	if (indexPath.row == _choice) cell.textLabel.textColor = WAColor(0x385487);
 	return cell;
@@ -409,13 +409,13 @@ static UILabel *LinenLabel(CGRect frame, UIFont *font) {
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
 	UIView *head = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 52)];
 	UILabel *l = LinenLabel(CGRectMake(20, 18, head.bounds.size.width - 40, 26), [UIFont boldSystemFontOfSize:19]);
-	l.text = @"Diagnostics";
+	l.text = WAL(@"Diagnostics");
 	[head addSubview:l];
 	return head;
 }
 
 - (NSString *)footerText {
-	return @"Help find and fix bugs in WA Classic by automatically sending anonymous diagnostics once a day. Never messages, contacts, numbers or names.";
+	return WAL(@"Help find and fix bugs in WA Classic by automatically sending anonymous diagnostics once a day. Never messages, contacts, numbers or names.");
 }
 
 - (CGFloat)footerLabelHeight:(CGFloat)width {
@@ -437,12 +437,16 @@ static UILabel *LinenLabel(CGRect frame, UIFont *font) {
 	UIButton *about = [UIButton buttonWithType:UIButtonTypeCustom];
 	about.frame = CGRectMake(30, lh + 22, w - 60, 30);
 	about.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-	about.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+	// long translations get a smaller font, the underline below has to match
+	NSString *aboutText = WAL(@"About Diagnostics and Privacy");
+	CGFloat size = 15;
+	while (size > 11 && [aboutText sizeWithFont:[UIFont boldSystemFontOfSize:size]].width > about.bounds.size.width - 4) size -= 0.5f;
+	about.titleLabel.font = [UIFont boldSystemFontOfSize:size];
 	[about setTitleColor:[UIColor colorWithWhite:0.82f alpha:1] forState:UIControlStateNormal];
 	[about setTitleColor:[UIColor whiteColor] forState:UIControlStateHighlighted];
 	about.titleLabel.shadowOffset = CGSizeMake(0, -1);
 	[about setTitleShadowColor:[UIColor colorWithWhite:0 alpha:0.6f] forState:UIControlStateNormal];
-	[about setTitle:@"About Diagnostics and Privacy" forState:UIControlStateNormal];
+	[about setTitle:aboutText forState:UIControlStateNormal];
 	[about addTarget:self action:@selector(aboutDiagnostics) forControlEvents:UIControlEventTouchUpInside];
 	// underline like the setup link, labels can't on ios 4/5
 	CGSize ts = [[about titleForState:UIControlStateNormal] sizeWithFont:about.titleLabel.font];
@@ -456,9 +460,9 @@ static UILabel *LinenLabel(CGRect frame, UIFont *font) {
 }
 
 - (void)aboutDiagnostics {
-	[[[UIAlertView alloc] initWithTitle:@"Diagnostics and Privacy"
-		message:[WADiagWhat stringByAppendingString:@"\n\nNever messages, contacts, numbers, names, your IP or location. Everything is deleted after 90 days, and turning it off in Settings › Chat Settings › Advanced deletes it right away.\n\nwaclassic.com/legal"]
-		delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+	[[[UIAlertView alloc] initWithTitle:WAL(@"Diagnostics and Privacy")
+		message:[WAL(WADiagWhat) stringByAppendingString:WAL(@"\n\nNever messages, contacts, numbers, names, your IP or location. Everything is deleted after 90 days, and turning it off in Settings › Chat Settings › Advanced deletes it right away.\n\nwaclassic.com/legal")]
+		delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 }
 
 - (void)next {
@@ -487,11 +491,11 @@ static UILabel *LinenLabel(CGRect frame, UIFont *font) {
 	BOOL tall = h > 420;
 
 	UILabel *head = LinenLabel(CGRectMake(20, tall ? 18 : 10, w - 40, 22), [UIFont boldSystemFontOfSize:17]);
-	head.text = @"WA Classic is now set up.";
+	head.text = WAL(@"WA Classic is now set up.");
 	head.textAlignment = NSTextAlignmentCenter;
 	[v addSubview:head];
 	UILabel *sub = LinenLabel(CGRectMake(20, CGRectGetMaxY(head.frame), w - 40, 44), [UIFont systemFontOfSize:17]);
-	sub.text = @"You're ready to start chatting the classic way.";
+	sub.text = WAL(@"You're ready to start chatting the classic way.");
 	sub.textAlignment = NSTextAlignmentCenter;
 	[v addSubview:sub];
 
@@ -523,7 +527,7 @@ static UILabel *LinenLabel(CGRect frame, UIFont *font) {
 		resizableImageWithCapInsets:UIEdgeInsetsMake(0, 12, 0, 12)] forState:UIControlStateNormal];
 	[go setBackgroundImage:[DrawnRounded(CGSizeMake(40, 50), 10, WAColor(0x3D6FD8), [UIColor colorWithWhite:0.25f alpha:1])
 		resizableImageWithCapInsets:UIEdgeInsetsMake(0, 12, 0, 12)] forState:UIControlStateHighlighted];
-	[go setTitle:@"Start Using WA Classic" forState:UIControlStateNormal];
+	[go setTitle:WAL(@"Start Using WA Classic") forState:UIControlStateNormal];
 	[go setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
 	[go setTitleColor:[UIColor whiteColor] forState:UIControlStateHighlighted];
 	go.titleLabel.font = [UIFont boldSystemFontOfSize:20];
@@ -534,7 +538,7 @@ static UILabel *LinenLabel(CGRect frame, UIFont *font) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Thank You";
+	self.title = WAL(@"Thank You");
 	self.navigationItem.hidesBackButton = YES;
 }
 

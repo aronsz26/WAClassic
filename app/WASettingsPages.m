@@ -109,7 +109,7 @@ typedef void (^WASetter)(BOOL on);
 }
 
 - (void)alert:(NSString *)text {
-	[[[UIAlertView alloc] initWithTitle:nil message:text delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+	[[[UIAlertView alloc] initWithTitle:nil message:text delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 }
 
 @end
@@ -138,7 +138,7 @@ typedef void (^WASetter)(BOOL on);
 	NSMutableArray *rows = [NSMutableArray array];
 	__weak WAChoiceController *weak = self;
 	for (NSString *o in _options) {
-		[rows addObject:@{@"title": o, @"check": @([o isEqualToString:current]), @"action": ^{
+		[rows addObject:@{@"title": WAL(o), @"check": @([o isEqualToString:current]), @"action": ^{
 			WASetPref(key, o);
 			WAPlaySound(o);
 			[weak rebuild];
@@ -157,7 +157,7 @@ typedef void (^WASetter)(BOOL on);
 @implementation WANotificationsController
 
 - (void)rebuild {
-	self.title = @"Notifications";
+	self.title = WAL(@"Notifications");
 	__weak WANotificationsController *weak = self;
 	WAAction (^sound)(NSString *, NSString *) = ^WAAction(NSString *title, NSString *key) {
 		return [^{
@@ -166,22 +166,22 @@ typedef void (^WASetter)(BOOL on);
 		} copy];
 	};
 	self.sections = @[
-		@{@"header": @"Message Notifications", @"rows": @[
-			@{@"title": @"Alerts", @"switch": WAPrefMessageAlerts},
-			@{@"title": @"Sound", @"detail": WAPrefString(WAPrefMessageSound) ?: @"", @"disclosure": @YES,
-				@"action": sound(@"Sound", WAPrefMessageSound)}]},
-		@{@"header": @"Group Notifications", @"footer": @"You can set custom group notifications in the Group Info page for a specific group",
+		@{@"header": WAL(@"Message Notifications"), @"rows": @[
+			@{@"title": WAL(@"Alerts"), @"switch": WAPrefMessageAlerts},
+			@{@"title": WAL(@"Sound"), @"detail": WAL(WAPrefString(WAPrefMessageSound)) ?: @"", @"disclosure": @YES,
+				@"action": sound(WAL(@"Sound"), WAPrefMessageSound)}]},
+		@{@"header": WAL(@"Group Notifications"), @"footer": WAL(@"You can set custom group notifications in the Group Info page for a specific group"),
 			@"rows": @[
-			@{@"title": @"Alerts", @"switch": WAPrefGroupAlerts},
-			@{@"title": @"Sound", @"detail": WAPrefString(WAPrefGroupSound) ?: @"", @"disclosure": @YES,
-				@"action": sound(@"Sound", WAPrefGroupSound)}]},
-		@{@"rows": @[@{@"title": @"In-App Sounds", @"switch": WAPrefInAppSounds},
-			@{@"title": @"In-App Vibrate", @"switch": WAPrefInAppVibrate},
-			@{@"title": @"In-App Preview", @"switch": WAPrefInAppPreview}]},
-		@{@"footer": @"Preview message text inside new message notifications.", @"rows": @[
-			@{@"title": @"Show Preview", @"switch": WAPrefShowPreview}]},
-		@{@"footer": @"Reset all notification settings including custom group notifications.", @"rows": @[
-			@{@"title": @"Reset All Notifications", @"button": @"blue", @"action": ^{
+			@{@"title": WAL(@"Alerts"), @"switch": WAPrefGroupAlerts},
+			@{@"title": WAL(@"Sound"), @"detail": WAL(WAPrefString(WAPrefGroupSound)) ?: @"", @"disclosure": @YES,
+				@"action": sound(WAL(@"Sound"), WAPrefGroupSound)}]},
+		@{@"rows": @[@{@"title": WAL(@"In-App Sounds"), @"switch": WAPrefInAppSounds},
+			@{@"title": WAL(@"In-App Vibrate"), @"switch": WAPrefInAppVibrate},
+			@{@"title": WAL(@"In-App Preview"), @"switch": WAPrefInAppPreview}]},
+		@{@"footer": WAL(@"Preview message text inside new message notifications."), @"rows": @[
+			@{@"title": WAL(@"Show Preview"), @"switch": WAPrefShowPreview}]},
+		@{@"footer": WAL(@"Reset all notification settings including custom group notifications."), @"rows": @[
+			@{@"title": WAL(@"Reset All Notifications"), @"button": @"blue", @"action": ^{
 				for (NSString *k in @[WAPrefMessageAlerts, WAPrefMessageSound, WAPrefGroupAlerts, WAPrefGroupSound, WAPrefShowPreview,
 					WAPrefInAppSounds, WAPrefInAppVibrate, WAPrefInAppPreview]) WASetPref(k, nil);
 				[weak rebuild];
@@ -202,7 +202,7 @@ typedef void (^WASetter)(BOOL on);
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Blocked";
+	self.title = WAL(@"Blocked");
 	[self load];
 }
 
@@ -222,7 +222,7 @@ typedef void (^WASetter)(BOOL on);
 				group:NO] animated:YES];
 		}}];
 	}
-	self.sections = @[@{@"footer": @"Blocked contacts will no longer be able to send you messages, but can still see your status.",
+	self.sections = @[@{@"footer": WAL(@"Blocked contacts will no longer be able to send you messages, but can still see your status."),
 		@"rows": rows}];
 }
 
@@ -276,9 +276,9 @@ typedef void (^WASetter)(BOOL on);
 @end
 
 static NSArray *NetworkValues(void) { return @[@"never", @"wifi", @"all"]; }
-static NSArray *NetworkTitles(void) { return @[@"Never", @"Wi-Fi", @"Wi-Fi and Cellular"]; }
+static NSArray *NetworkTitles(void) { return @[WAL(@"Never"), WAL(@"Wi-Fi"), WAL(@"Wi-Fi and Cellular")]; }
 static NSArray *OptimizeValues(void) { return @[@"off", @"cellular", @"always"]; }
-static NSArray *OptimizeTitles(void) { return @[@"Off", @"On Cellular", @"Always"]; }
+static NSArray *OptimizeTitles(void) { return @[WAL(@"Off"), WAL(@"On Cellular"), WAL(@"Always")]; }
 
 static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 	NSUInteger i = [values indexOfObject:WAPrefString(key) ?: @""];
@@ -288,7 +288,7 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 @implementation WAAutoDownloadController
 
 - (void)rebuild {
-	self.title = @"Auto-Download";
+	self.title = WAL(@"Auto-Download");
 	__weak WAAutoDownloadController *weak = self;
 	NSMutableArray *media = [NSMutableArray array];
 	for (NSArray *k in @[@[@"Photos", WAPrefAutoPhotos], @[@"Audio", WAPrefAutoAudio], @[@"Videos", WAPrefAutoVideos]]) {
@@ -299,13 +299,13 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 					values:NetworkValues() titles:NetworkTitles() footer:nil] animated:YES];
 			}}];
 	}
-	NSString *optFooter = @"Videos are scaled down by your bridge before they are sent to your iPhone. They load much faster but look less sharp.";
+	NSString *optFooter = WAL(@"Videos are scaled down by your bridge before they are sent to your iPhone. They load much faster but look less sharp.");
 	self.sections = @[
-		@{@"header": @"Auto-Download Media", @"rows": media,
-			@"footer": @"Media that is not downloaded automatically shows a small preview. Tap it to load it."},
-		@{@"rows": @[@{@"title": @"Optimize Video", @"detail": TitleFor(WAPrefOptimizeVideo, OptimizeValues(), OptimizeTitles()),
+		@{@"header": WAL(@"Auto-Download Media"), @"rows": media,
+			@"footer": WAL(@"Media that is not downloaded automatically shows a small preview. Tap it to load it.")},
+		@{@"rows": @[@{@"title": WAL(@"Optimize Video"), @"detail": TitleFor(WAPrefOptimizeVideo, OptimizeValues(), OptimizeTitles()),
 			@"disclosure": @YES, @"action": ^{
-				[weak.navigationController pushViewController:[[WAOptionController alloc] initWithTitle:@"Optimize Video"
+				[weak.navigationController pushViewController:[[WAOptionController alloc] initWithTitle:WAL(@"Optimize Video")
 					key:WAPrefOptimizeVideo values:OptimizeValues() titles:OptimizeTitles() footer:optFooter] animated:YES];
 			}}], @"footer": optFooter},
 	];
@@ -331,14 +331,14 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 	NSMutableArray *rows = [NSMutableArray array];
 	if (jid) {
 		NSString *def = WAPrefString(mine ? WAPrefBubbleOut : WAPrefBubbleIn);
-		[rows addObject:@{@"title": @"Default", @"detail": def, @"image": WABubbleSwatch(def, mine), @"check": @(current == nil),
+		[rows addObject:@{@"title": WAL(@"Default"), @"detail": WAL(def), @"image": WABubbleSwatch(def, mine), @"check": @(current == nil),
 			@"height": @44, @"action": ^{
 				WASetChatBubble(jid, mine, nil);
 				[weak rebuild];
 			}}];
 	}
 	for (NSString *name in WABubbleColorNames()) {
-		[rows addObject:@{@"title": name, @"image": WABubbleSwatch(name, mine), @"check": @([name isEqualToString:current]),
+		[rows addObject:@{@"title": WAL(name), @"image": WABubbleSwatch(name, mine), @"check": @([name isEqualToString:current]),
 			@"action": ^{
 				if (jid) WASetChatBubble(jid, mine, name);
 				else WASetPref(mine ? WAPrefBubbleOut : WAPrefBubbleIn, name);
@@ -349,11 +349,11 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 }
 
 - (void)rebuild {
-	self.title = @"Chat Bubbles";
+	self.title = WAL(@"Chat Bubbles");
 	self.sections = @[
-		@{@"header": @"Your Messages", @"rows": [self rowsMine:YES]},
-		@{@"header": @"Their Messages", @"rows": [self rowsMine:NO],
-			@"footer": _jid ? @"These colors are only used in this chat." : @"You can also pick colors for a single chat in its Contact Info or Group Info."},
+		@{@"header": WAL(@"Your Messages"), @"rows": [self rowsMine:YES]},
+		@{@"header": WAL(@"Their Messages"), @"rows": [self rowsMine:NO],
+			@"footer": _jid ? WAL(@"These colors are only used in this chat.") : WAL(@"You can also pick colors for a single chat in its Contact Info or Group Info.")},
 	];
 }
 
@@ -367,7 +367,7 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Advanced";
+	self.title = WAL(@"Advanced");
 	[[WAClient shared] get:@"/api/me" params:nil completion:^(id json, NSError *error) {
 		self.lastSeen = json[@"lastSeen"];
 		[self rebuild];
@@ -376,13 +376,13 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 
 - (void)rebuild {
 	__weak WAAdvancedController *weak = self;
-	NSMutableArray *sections = [NSMutableArray arrayWithObject:@{@"footer": @"Choose which media is downloaded automatically.",
-		@"rows": @[@{@"title": @"Auto-Download", @"disclosure": @YES, @"action": ^{
+	NSMutableArray *sections = [NSMutableArray arrayWithObject:@{@"footer": WAL(@"Choose which media is downloaded automatically."),
+		@"rows": @[@{@"title": WAL(@"Auto-Download"), @"disclosure": @YES, @"action": ^{
 			[weak.navigationController pushViewController:[[WAAutoDownloadController alloc] init] animated:YES];
 		}}]}];
 	if (self.lastSeen) {
-		[sections addObject:@{@"footer": @"Turn OFF to not allow or show last seen timestamp.", @"rows": @[
-			@{@"title": @"Last Seen Timestamp", @"on": ^BOOL { return ![weak.lastSeen isEqualToString:@"none"]; },
+		[sections addObject:@{@"footer": WAL(@"Turn OFF to not allow or show last seen timestamp."), @"rows": @[
+			@{@"title": WAL(@"Last Seen Timestamp"), @"on": ^BOOL { return ![weak.lastSeen isEqualToString:@"none"]; },
 				@"toggle": ^(BOOL on) {
 					// back to what it was, not simply everyone
 					NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
@@ -395,8 +395,8 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 					}];
 				}}]}];
 	}
-	[sections addObject:@{@"footer": [WADiagWhat stringByAppendingString:@" Never messages, contacts, numbers, names, your IP or location. Turning it off deletes what was sent."],
-		@"rows": @[@{@"title": @"Send Diagnostics", @"on": ^BOOL { return WAPrefBool(WAPrefDiagnostics); },
+	[sections addObject:@{@"footer": [WAL(WADiagWhat) stringByAppendingString:WAL(@" Never messages, contacts, numbers, names, your IP or location. Turning it off deletes what was sent.")],
+		@"rows": @[@{@"title": WAL(@"Send Diagnostics"), @"on": ^BOOL { return WAPrefBool(WAPrefDiagnostics); },
 			@"toggle": ^(BOOL on) {
 				if (on) [[WADiag shared] turnedOn];
 				else {
@@ -430,7 +430,7 @@ static NSString *OwnWallpaperPath(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Wallpaper Library";
+	self.title = WAL(@"Wallpaper Library");
 	self.view.backgroundColor = [UIColor blackColor];
 	UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:self.view.bounds];
 	scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -464,20 +464,20 @@ static NSString *OwnWallpaperPath(void) {
 @implementation WAWallpaperController
 
 - (void)rebuild {
-	self.title = @"Chat Wallpaper";
+	self.title = WAL(@"Chat Wallpaper");
 	__weak WAWallpaperController *weak = self;
 	self.sections = @[
 		@{@"rows": @[
-			@{@"title": @"Wallpaper Library", @"disclosure": @YES, @"action": ^{
+			@{@"title": WAL(@"Wallpaper Library"), @"disclosure": @YES, @"action": ^{
 				[weak.navigationController pushViewController:[[WAWallpaperLibraryController alloc] init] animated:YES];
 			}},
-			@{@"title": @"Photo Library", @"disclosure": @YES, @"action": ^{
+			@{@"title": WAL(@"Photo Library"), @"disclosure": @YES, @"action": ^{
 				UIImagePickerController *picker = [[UIImagePickerController alloc] init];
 				picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
 				picker.delegate = weak;
 				[weak presentViewController:picker animated:YES completion:nil];
 			}}]},
-		@{@"rows": @[@{@"title": @"Reset Wallpaper", @"button": @"blue", @"action": ^{
+		@{@"rows": @[@{@"title": WAL(@"Reset Wallpaper"), @"button": @"blue", @"action": ^{
 			WASetPref(WAPrefWallpaper, nil);
 			[weak.navigationController popViewControllerAnimated:YES];
 		}}]},
@@ -515,23 +515,23 @@ static NSString *OwnWallpaperPath(void) {
 }
 
 - (void)rebuild {
-	self.title = @"Chat Settings";
+	self.title = WAL(@"Chat Settings");
 	__weak WAChatSettingsController *weak = self;
 	WAAction (^push)(Class) = ^WAAction(Class cls) {
 		return [^{ [weak.navigationController pushViewController:[[cls alloc] init] animated:YES]; } copy];
 	};
-	NSString *blocked = _blockedCount ? [NSString stringWithFormat:@"%@ %@", _blockedCount, [_blockedCount intValue] == 1 ? @"contact" : @"contacts"] : @"";
+	NSString *blocked = _blockedCount ? [NSString stringWithFormat:@"%@ %@", _blockedCount, [_blockedCount intValue] == 1 ? WAL(@"contact") : WAL(@"contacts")] : @"";
 	self.sections = @[
-		@{@"footer": @"List of contacts you have blocked.", @"rows": @[
-			@{@"title": @"Blocked", @"detail": blocked, @"disclosure": @YES, @"action": push([WABlockedController class])}]},
-		@{@"rows": @[@{@"title": @"Chat Wallpaper", @"disclosure": @YES, @"action": push([WAWallpaperController class])},
-			@{@"title": @"Chat Bubbles", @"disclosure": @YES, @"action": push([WABubbleColorsController class])}]},
-		@{@"footer": @"Display time when message was sent or received.", @"rows": @[
-			@{@"title": @"Message Timestamp", @"switch": WAPrefMessageTimestamp}]},
-		@{@"footer": @"Automatically save images and video that you receive into the Camera Roll.", @"rows": @[
-			@{@"title": @"Save Incoming Media", @"switch": WAPrefSaveIncomingMedia}]},
-		@{@"footer": @"Edit advanced chat settings.", @"rows": @[
-			@{@"title": @"Advanced", @"disclosure": @YES, @"action": push([WAAdvancedController class])}]},
+		@{@"footer": WAL(@"List of contacts you have blocked."), @"rows": @[
+			@{@"title": WAL(@"Blocked"), @"detail": blocked, @"disclosure": @YES, @"action": push([WABlockedController class])}]},
+		@{@"rows": @[@{@"title": WAL(@"Chat Wallpaper"), @"disclosure": @YES, @"action": push([WAWallpaperController class])},
+			@{@"title": WAL(@"Chat Bubbles"), @"disclosure": @YES, @"action": push([WABubbleColorsController class])}]},
+		@{@"footer": WAL(@"Display time when message was sent or received."), @"rows": @[
+			@{@"title": WAL(@"Message Timestamp"), @"switch": WAPrefMessageTimestamp}]},
+		@{@"footer": WAL(@"Automatically save images and video that you receive into the Camera Roll."), @"rows": @[
+			@{@"title": WAL(@"Save Incoming Media"), @"switch": WAPrefSaveIncomingMedia}]},
+		@{@"footer": WAL(@"Edit advanced chat settings."), @"rows": @[
+			@{@"title": WAL(@"Advanced"), @"disclosure": @YES, @"action": push([WAAdvancedController class])}]},
 	];
 }
 
@@ -551,9 +551,9 @@ static NSString *OwnWallpaperPath(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Profile";
+	self.title = WAL(@"Profile");
 	self.tableView.tableHeaderView = [self photoHeader];
-	_nameField = [self field:@"Your name"];
+	_nameField = [self field:WAL(@"Your name")];
 	[self load];
 }
 
@@ -599,7 +599,7 @@ static NSString *OwnWallpaperPath(void) {
 		b.layer.cornerRadius = 6;
 	}
 	UILabel *edit = [[UILabel alloc] initWithFrame:CGRectMake(4, b.bounds.size.height - 23, b.bounds.size.width - 8, 18)];
-	edit.text = @"edit";
+	edit.text = WAL(@"edit");
 	edit.font = [UIFont boldSystemFontOfSize:12];
 	edit.textColor = [UIColor whiteColor];
 	edit.backgroundColor = [UIColor clearColor];
@@ -619,7 +619,7 @@ static NSString *OwnWallpaperPath(void) {
 
 - (void)rebuild {
 	self.sections = @[
-		@{@"header": @"Push name", @"footer": @"To change your name, open WhatsApp on your phone.", @"rows": @[@{@"field": _nameField}]},
+		@{@"header": WAL(@"Push name"), @"footer": WAL(@"To change your name, open WhatsApp on your phone."), @"rows": @[@{@"field": _nameField}]},
 	];
 }
 
@@ -634,12 +634,12 @@ static NSString *OwnWallpaperPath(void) {
 }
 
 - (void)photoTapped {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Profile Photo" delegate:self cancelButtonTitle:nil
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:WAL(@"Profile Photo") delegate:self cancelButtonTitle:nil
 		destructiveButtonTitle:nil otherButtonTitles:nil];
-	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) [sheet addButtonWithTitle:@"Take Photo"];
-	[sheet addButtonWithTitle:@"Choose Existing Photo"];
-	sheet.destructiveButtonIndex = [sheet addButtonWithTitle:@"Delete Photo"];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) [sheet addButtonWithTitle:WAL(@"Take Photo")];
+	[sheet addButtonWithTitle:WAL(@"Choose Existing Photo")];
+	sheet.destructiveButtonIndex = [sheet addButtonWithTitle:WAL(@"Delete Photo")];
+	sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 	[sheet showInView:self.tabBarController.view ?: self.view];
 }
 
@@ -650,7 +650,7 @@ static NSString *OwnWallpaperPath(void) {
 		return;
 	}
 	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
-	picker.sourceType = [[sheet buttonTitleAtIndex:index] isEqualToString:@"Take Photo"] ? UIImagePickerControllerSourceTypeCamera
+	picker.sourceType = [[sheet buttonTitleAtIndex:index] isEqualToString:WAL(@"Take Photo")] ? UIImagePickerControllerSourceTypeCamera
 		: UIImagePickerControllerSourceTypePhotoLibrary;
 	picker.allowsEditing = YES; // square crop
 	picker.delegate = self;
@@ -673,7 +673,8 @@ static NSString *OwnWallpaperPath(void) {
 	[UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
 	[[WAClient shared] post:@"/api/me/photo" params:nil data:jpeg contentType:@"image/jpeg" completion:^(id json, NSError *error) {
 		[UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-		if (error) [self alert:@"Sorry, could not update your profile photo."];
+		if (error) [self alert:WAL(@"Sorry, could not update your profile photo.")];
+		else [[WAClient shared] forgetAvatar:self->_me[@"jid"]];
 		[self loadPhoto];
 	}];
 }
@@ -691,7 +692,7 @@ static NSString *OwnWallpaperPath(void) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Account";
+	self.title = WAL(@"Account");
 	self.tableView.tableFooterView = [self logOutButton];
 	[[WAClient shared] get:@"/api/me" params:nil completion:^(id json, NSError *error) {
 		if ([json isKindOfClass:[NSDictionary class]]) self->_me = json;
@@ -702,13 +703,13 @@ static NSString *OwnWallpaperPath(void) {
 - (void)rebuild {
 	__weak WAAccountController *weak = self;
 	self.sections = @[
-		@{@"header": @"Phone Number", @"rows": @[@{@"title": _me[@"phone"] ?: @"…"}]},
-		@{@"header": @"Linked Device",
-			@"footer": @"This iPhone is a linked device of your WhatsApp account. Messages reach it through your own WA Classic bridge; your phone does not need to stay online.",
-			@"rows": @[@{@"title": @"Device", @"detail": [NSString stringWithFormat:@"%@ · WA Classic", [UIDevice currentDevice].model]},
-				@{@"title": @"Device Number", @"detail": _me[@"device"] ? [_me[@"device"] description] : @"…"},
-				@{@"title": @"Connection", @"detail": _me ? ([_me[@"connected"] boolValue] ? @"Connected" : @"Not connected") : @"…"}]},
-		@{@"rows": @[@{@"title": @"Network Status", @"disclosure": @YES, @"action": ^{
+		@{@"header": WAL(@"Phone Number"), @"rows": @[@{@"title": _me[@"phone"] ?: @"…"}]},
+		@{@"header": WAL(@"Linked Device"),
+			@"footer": WAL(@"This iPhone is a linked device of your WhatsApp account. Messages reach it through your own WA Classic bridge; your phone does not need to stay online."),
+			@"rows": @[@{@"title": WAL(@"Device"), @"detail": [NSString stringWithFormat:@"%@ · WA Classic", [UIDevice currentDevice].model]},
+				@{@"title": WAL(@"Device Number"), @"detail": _me[@"device"] ? [_me[@"device"] description] : @"…"},
+				@{@"title": WAL(@"Connection"), @"detail": _me ? ([_me[@"connected"] boolValue] ? WAL(@"Connected") : WAL(@"Not connected")) : @"…"}]},
+		@{@"rows": @[@{@"title": WAL(@"Network Status"), @"disclosure": @YES, @"action": ^{
 			[weak.navigationController pushViewController:[[WASettingsViewController alloc] init] animated:YES];
 		}}]},
 	];
@@ -729,7 +730,7 @@ static NSString *OwnWallpaperPath(void) {
 		b.backgroundColor = WAColor(0xC9302C);
 		b.layer.cornerRadius = 8;
 	}
-	[b setTitle:@"Log Out" forState:UIControlStateNormal];
+	[b setTitle:WAL(@"Log Out") forState:UIControlStateNormal];
 	b.titleLabel.font = [UIFont fontWithName:@"Helvetica-Bold" size:18];
 	b.titleLabel.shadowOffset = CGSizeMake(0, -1);
 	[b setTitleShadowColor:[UIColor colorWithWhite:0 alpha:0.4] forState:UIControlStateNormal];
@@ -739,8 +740,8 @@ static NSString *OwnWallpaperPath(void) {
 }
 
 - (void)logOutTapped {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"This logs out every iPhone on your bridge, not just this one. Their chats will be deleted there; your phone keeps them. To use WA Classic again, link again, with any account."
-		delegate:self cancelButtonTitle:@"Cancel" destructiveButtonTitle:@"Log Out" otherButtonTitles:nil];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:WAL(@"This logs out every iPhone on your bridge, not just this one. Their chats will be deleted there; your phone keeps them. To use WA Classic again, link again, with any account.")
+		delegate:self cancelButtonTitle:WAL(@"Cancel") destructiveButtonTitle:WAL(@"Log Out") otherButtonTitles:nil];
 	[sheet showFromTabBar:self.tabBarController.tabBar];
 }
 
@@ -750,7 +751,7 @@ static NSString *OwnWallpaperPath(void) {
 	[[WAClient shared] post:@"/api/pair/unlink" params:nil completion:^(id json, NSError *error) {
 		[UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
 		if (error) {
-			[self alert:@"WhatsApp requires an active internet connection to update your settings."];
+			[self alert:WAL(@"WhatsApp requires an active internet connection to update your settings.")];
 			return;
 		}
 		WALog(@"account: logged out");
@@ -771,8 +772,8 @@ static NSString *OwnWallpaperPath(void) {
 
 - (instancetype)init {
 	if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
-		self.title = @"Settings";
-		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Settings" image:WAImg(@"Settings") tag:4];
+		self.title = WAL(@"Settings");
+		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:WAL(@"Settings") image:WAImg(@"Settings") tag:4];
 	}
 	return self;
 }
@@ -780,12 +781,12 @@ static NSString *OwnWallpaperPath(void) {
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
 	if (![WAClient shared].configured) {
-		_network = @"Not set up";
+		_network = WAL(@"Not set up");
 		[self.tableView reloadData];
 		return;
 	}
 	[[WAClient shared] get:@"/api/me" params:nil completion:^(id json, NSError *error) {
-		self->_network = error ? @"Not connected" : ([json[@"connected"] boolValue] ? @"Connected" : @"Connecting");
+		self->_network = error ? WAL(@"Not connected") : ([json[@"connected"] boolValue] ? WAL(@"Connected") : WAL(@"Connecting"));
 		if ([json isKindOfClass:[NSDictionary class]]) {
 			self->_me = json;
 			[[WAClient shared] avatarFor:json[@"jid"] completion:^(UIImage *image) {
@@ -805,7 +806,7 @@ static NSString *OwnWallpaperPath(void) {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return section == 1 ? 3 : section == 3 ? 2 : 1;
+	return section == 1 ? 4 : section == 3 ? 2 : 1;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -815,7 +816,7 @@ static NSString *OwnWallpaperPath(void) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
 	if (section != 3) return nil;
 	NSString *v = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-	return [NSString stringWithFormat:@"WA Classic %@ by aronsz26 – an unofficial WhatsApp client for iOS 4 to 6, linked to your account through your own bridge. Not affiliated with WhatsApp or Meta.", v];
+	return [NSString stringWithFormat:WAL(@"WA Classic %@ by aronsz26 – an unofficial WhatsApp client for iOS 4 to 6, linked to your account through your own bridge. Not affiliated with WhatsApp or Meta."), v];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -824,7 +825,7 @@ static NSString *OwnWallpaperPath(void) {
 	cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 	switch (indexPath.section) {
 		case 0: {
-			cell.textLabel.text = [_me[@"pushName"] length] ? _me[@"pushName"] : @"Profile";
+			cell.textLabel.text = [_me[@"pushName"] length] ? _me[@"pushName"] : WAL(@"Profile");
 			cell.textLabel.font = [UIFont boldSystemFontOfSize:18];
 			cell.detailTextLabel.text = _me[@"phone"];
 			UIImage *pic = _photo ?: WAImg(@"EmptyContact");
@@ -838,10 +839,12 @@ static NSString *OwnWallpaperPath(void) {
 			break;
 		}
 		case 1:
-			cell.textLabel.text = @[@"Account", @"Chat Settings", @"Notifications"][indexPath.row];
+			// "Languages" stays english, so it can be found in any language
+			cell.textLabel.text = @[WAL(@"Account"), WAL(@"Chat Settings"), WAL(@"Notifications"), @"Languages"][indexPath.row];
+			if (indexPath.row == 3) cell.detailTextLabel.text = WAChosenLanguage() ? WALanguageName(WAChosenLanguage()) : WAL(@"Automatic");
 			break;
 		case 2:
-			cell.textLabel.text = @"Network Status";
+			cell.textLabel.text = WAL(@"Network Status");
 			cell.detailTextLabel.text = _network;
 			break;
 #ifdef WA_DEV
@@ -850,7 +853,7 @@ static NSString *OwnWallpaperPath(void) {
 			break;
 #endif
 		default:
-			cell.textLabel.text = indexPath.row ? @"Help & Bugs" : @"Tell a Friend";
+			cell.textLabel.text = indexPath.row ? WAL(@"Help & Bugs") : WAL(@"Tell a Friend");
 			break;
 	}
 	return cell;
@@ -861,7 +864,8 @@ static NSString *OwnWallpaperPath(void) {
 	UIViewController *next = nil;
 	switch (indexPath.section) {
 		case 0: next = [[WAProfileController alloc] init]; break;
-		case 1: next = [@[[WAAccountController class], [WAChatSettingsController class], [WANotificationsController class]][indexPath.row] new]; break;
+		case 1: next = [@[[WAAccountController class], [WAChatSettingsController class], [WANotificationsController class],
+			[WALanguagesController class]][indexPath.row] new]; break;
 		case 2: next = [[WASettingsViewController alloc] init]; break;
 #ifdef WA_DEV
 		case 4: next = WADevMenu(); break;
@@ -870,16 +874,53 @@ static NSString *OwnWallpaperPath(void) {
 			if (indexPath.row) {
 				// Discord doesn't load in old Safari, so hand out the link
 				[UIPasteboard generalPasteboard].string = @"https://discord.gg/HaTErjRdbk";
-				[[[UIAlertView alloc] initWithTitle:@"Help & Bugs" message:@"Ask questions and report bugs on the WA Classic Discord. The link was copied, open it on a computer or a newer phone:\n\ndiscord.gg/HaTErjRdbk" delegate:nil
-					cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+				[[[UIAlertView alloc] initWithTitle:WAL(@"Help & Bugs") message:WAL(@"Ask questions and report bugs on the WA Classic Discord. The link was copied, open it on a computer or a newer phone:\n\ndiscord.gg/HaTErjRdbk") delegate:nil
+					cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 				return;
 			}
-			[UIPasteboard generalPasteboard].string = @"WhatsApp Messenger is available for iPhone, Android, Nokia, BlackBerry and Windows Phone.";
-			[[[UIAlertView alloc] initWithTitle:@"Tell a Friend" message:@"The invitation text was copied." delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+			[UIPasteboard generalPasteboard].string = WAL(@"WhatsApp Messenger is available for iPhone, Android, Nokia, BlackBerry and Windows Phone.");
+			[[[UIAlertView alloc] initWithTitle:WAL(@"Tell a Friend") message:WAL(@"The invitation text was copied.") delegate:nil
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			return;
 	}
 	[self.navigationController pushViewController:next animated:YES];
+}
+
+@end
+
+#pragma mark - Languages
+
+NSString *const WALanguageChangedNotification = @"WALanguageChangedNotification";
+
+@implementation WALanguagesController
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	self.title = @"Languages";
+	[self rebuild];
+}
+
+- (void)rebuild {
+	NSString *chosen = WAChosenLanguage();
+	NSArray *codes = [WASupportedLanguages() sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+		return [WALanguageName(a) localizedCaseInsensitiveCompare:WALanguageName(b)];
+	}];
+	NSMutableArray *rows = [NSMutableArray array];
+	__weak WALanguagesController *weak = self;
+	for (NSString *code in codes) {
+		[rows addObject:@{@"title": WALanguageName(code), @"check": @([code isEqualToString:chosen]), @"action": ^{ [weak pick:code]; }}];
+	}
+	self.sections = @[
+		@{@"rows": @[@{@"title": WAL(@"Automatic"), @"check": @(chosen == nil), @"action": ^{ [weak pick:nil]; }}],
+			@"footer": WAL(@"Automatic uses the language of your iPhone, or English if WA Classic doesn't support it.")},
+		@{@"rows": rows}];
+}
+
+- (void)pick:(NSString *)code {
+	if ((code == nil && WAChosenLanguage() == nil) || [code isEqualToString:WAChosenLanguage()]) return;
+	WALog(@"settings: language %@", code ?: @"automatic");
+	WASetLanguage(code);
+	[[NSNotificationCenter defaultCenter] postNotificationName:WALanguageChangedNotification object:nil];
 }
 
 @end

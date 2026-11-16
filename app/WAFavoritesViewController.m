@@ -18,7 +18,7 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 
 - (instancetype)init {
 	if ((self = [super initWithStyle:UITableViewStylePlain])) {
-		self.title = @"Favorites";
+		self.title = WAL(@"Favorites");
 		self.tabBarItem = [[UITabBarItem alloc] initWithTabBarSystemItem:UITabBarSystemItemFavorites tag:0];
 		[WAFavoritesViewController forgetGenerated];
 		_favorites = [[[NSUserDefaults standardUserDefaults] arrayForKey:kFavoritesKey] mutableCopy] ?: [NSMutableArray array];
@@ -56,11 +56,12 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 	self.tableView.rowHeight = 50;
 	self.tableView.allowsSelectionDuringEditing = NO;
 	_search = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
-	_search.placeholder = @"Search";
+	_search.placeholder = WAL(@"Search");
 	_search.delegate = self;
 	_search.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	self.tableView.tableHeaderView = _search;
 	self.navigationItem.leftBarButtonItem = self.editButtonItem;
+	self.editButtonItem.title = WAL(@"Edit"); // system title follows the system language
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
 		target:self action:@selector(add)];
 	[self updateFooter];
@@ -128,7 +129,7 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 		b.titleLabel.font = [UIFont boldSystemFontOfSize:18];
 		b.titleLabel.shadowOffset = CGSizeMake(0, -1);
 		[b setTitleShadowColor:[UIColor colorWithWhite:0 alpha:0.4] forState:UIControlStateNormal];
-		[b setTitle:@"Delete All Favorites" forState:UIControlStateNormal];
+		[b setTitle:WAL(@"Delete All Favorites") forState:UIControlStateNormal];
 		[b addTarget:self action:@selector(deleteAllTapped) forControlEvents:UIControlEventTouchUpInside];
 		[f addSubview:b];
 		self.tableView.tableFooterView = f;
@@ -144,10 +145,10 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 			[_empty addSubview:star];
 			CGFloat y = star.image ? 190 : 40;
 			UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(20, y, w - 40, 24)];
-			title.text = @"No Favorites Yet";
+			title.text = WAL(@"No Favorites Yet");
 			title.font = [UIFont boldSystemFontOfSize:19];
 			UILabel *hint = [[UILabel alloc] initWithFrame:CGRectMake(30, y + 28, w - 60, 40)];
-			hint.text = @"Tap + to add a contact to your Favorites.";
+			hint.text = WAL(@"Tap + to add a contact to your Favorites.");
 			hint.font = [UIFont systemFontOfSize:15];
 			hint.numberOfLines = 2;
 			for (UILabel *l in @[title, hint]) {
@@ -165,7 +166,7 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 	// "12 Favorites"
 	UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, w, 50)];
 	NSUInteger n = _favorites.count;
-	l.text = _contacts ? [NSString stringWithFormat:n == 1 ? @"%lu Favorite" : @"%lu Favorites", (unsigned long)n] : nil;
+	l.text = _contacts ? [NSString stringWithFormat:n == 1 ? WAL(@"%lu Favorite") : WAL(@"%lu Favorites"), (unsigned long)n] : nil;
 	l.font = [UIFont systemFontOfSize:17];
 	l.textColor = WAColor(0x7F8A99);
 	l.textAlignment = NSTextAlignmentCenter;
@@ -174,8 +175,8 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 }
 
 - (void)deleteAllTapped {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:@"Cancel"
-		destructiveButtonTitle:@"Delete All Favorites" otherButtonTitles:nil];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:WAL(@"Cancel")
+		destructiveButtonTitle:WAL(@"Delete All Favorites") otherButtonTitles:nil];
 	[sheet showInView:self.tabBarController.view ?: self.view];
 }
 
@@ -196,6 +197,7 @@ static NSString *const kFavoritesKey = @"favorites", *const kGeneratedKey = @"fa
 	}
 	[_search resignFirstResponder];
 	[super setEditing:editing animated:animated];
+	self.editButtonItem.title = editing ? WAL(@"Done") : WAL(@"Edit");
 	self.navigationItem.rightBarButtonItem.enabled = !editing;
 	[self updateFooter];
 }

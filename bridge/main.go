@@ -109,6 +109,8 @@ func main() {
 	}
 
 	cli := whatsmeow.NewClient(device, waLog.Stdout("WA", "INFO", false))
+	// Full snapshots carry the current archive state; emit their events so the app's chat store can import it.
+	cli.EmitAppStateEventsOnFullSync = true
 	b := &Bridge{cli: cli, store: st, dataDir: *dataDir}
 	cli.AddEventHandler(b.handle)
 	b.calls = newCalls(b) // needs to exist before connecting
@@ -159,6 +161,7 @@ func main() {
 	api("/api/pair/unlink", b.apiUnlink)
 	api("/api/assets", b.assets.apiList)
 	api("/api/assets/file", b.assets.apiFile)
+	api("/api/assets/fetch", b.assets.apiFetch)
 	api("/api/chats", b.apiChats)
 	api("/api/messages", b.apiMessages)
 	api("/api/updates", b.apiUpdates)
@@ -192,6 +195,9 @@ func main() {
 	api("/api/group/participants", b.apiGroupParticipants)
 	api("/api/group/leave", b.apiGroupLeave)
 	api("/api/calls", b.calls.apiList)
+	api("/api/statuses", b.apiStatuses)
+	api("/api/statuses/media", b.apiStatusMedia)
+	api("/api/statuses/seen", b.apiStatusSeen)
 	api("/api/call/state", b.calls.apiState)
 	api("/api/call/start", b.calls.apiStart)
 	api("/api/call/answer", b.calls.apiAnswer)
@@ -394,6 +400,11 @@ func (b *Bridge) apiUpdates(w http.ResponseWriter, r *http.Request) {
 			}
 			msgs, chatsChanged, presence = kept, false, nil
 		}
+		if !incomingOnly {
+			for i := range msgs {
+				msgs[i].Muted = b.isMuted(r.Context(), msgs[i].Chat)
+			}
+		}
 		if len(msgs) > 0 || chatsChanged || len(presence) > 0 || call != nil || wait == 0 {
 			upd := b.store.upd.Load()
 			if len(msgs) == 200 {
@@ -457,6 +468,11 @@ func (b *Bridge) apiMedia(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	b.serveRaw(w, r, seq, raw)
+}
+
+// serveRaw: the media of a stored message, seq names the cached video files
+func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw []byte) {
 	var msg waE2E.Message
 	if err := proto.Unmarshal(raw, &msg); err != nil {
 		httpErr(w, err, 500)
@@ -482,15 +498,24 @@ func (b *Bridge) apiMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("format") == "thumb" { // thumbnail for all media
-		thumb := msg.GetImageMessage().GetJPEGThumbnail()
-		if thumb == nil {
-			thumb = msg.GetVideoMessage().GetJPEGThumbnail()
+		var thumb []byte
+		var thumbMIME string
+		if sticker := msg.GetStickerMessage(); sticker != nil {
+			var err error
+			thumb, err = b.stickerThumbnail(r.Context(), seq, sticker)
+			thumbMIME = "image/png"
+			if err != nil {
+				httpErr(w, err, http.StatusBadGateway)
+				return
+			}
+		} else {
+			thumb, thumbMIME = mediaThumbnail(&msg)
 		}
-		if thumb == nil {
+		if len(thumb) == 0 {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Type", thumbMIME)
 		w.Write(thumb)
 		return
 	}

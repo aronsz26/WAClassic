@@ -14,7 +14,7 @@ static const NSInteger kMaxSubject = 25;
 	if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
 		_jid = [jid copy];
 		_subject = [subject copy] ?: @"";
-		self.title = @"Subject";
+		self.title = WAL(@"Subject");
 	}
 	return self;
 }
@@ -28,7 +28,7 @@ static const NSInteger kMaxSubject = 25;
 	self.navigationItem.rightBarButtonItem.enabled = NO;
 	_field = [[UITextField alloc] initWithFrame:CGRectMake(10, 11, 280, 22)];
 	_field.font = [UIFont systemFontOfSize:17];
-	_field.placeholder = @"Group Subject";
+	_field.placeholder = WAL(@"Group Subject");
 	_field.text = _subject;
 	_field.clearButtonMode = UITextFieldViewModeWhileEditing;
 	_field.returnKeyType = UIReturnKeyDone;
@@ -94,7 +94,7 @@ static const NSInteger kMaxSubject = 25;
 	[[WAClient shared] post:@"/api/group/subject" params:@{@"jid": _jid, @"subject": subject} completion:^(id json, NSError *error) {
 		if (error) {
 			self.navigationItem.rightBarButtonItem.enabled = YES;
-			[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil cancelButtonTitle:@"OK"
+			[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil cancelButtonTitle:WAL(@"OK")
 				otherButtonTitles:nil] show];
 			return;
 		}

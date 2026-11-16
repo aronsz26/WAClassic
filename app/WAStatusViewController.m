@@ -56,8 +56,8 @@ static UIImage *SoonImage(void) {
 
 - (instancetype)init {
 	if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
-		self.title = @"Status";
-		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Status" image:WAImg(@"My status") tag:1];
+		self.title = WAL(@"Status");
+		self.tabBarItem = [[UITabBarItem alloc] initWithTitle:WAL(@"Status") image:WAImg(@"My status") tag:1];
 	}
 	return self;
 }
@@ -73,7 +73,7 @@ static UIImage *SoonImage(void) {
 	bubble.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
 	[v addSubview:bubble];
 	UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(20, 196, w - 40, 26)];
-	l.text = @"Coming in a later version";
+	l.text = WAL(@"Coming in a later version");
 	l.font = [UIFont boldSystemFontOfSize:19];
 	l.textColor = WAColor(0x7F8A99);
 	l.textAlignment = NSTextAlignmentCenter;

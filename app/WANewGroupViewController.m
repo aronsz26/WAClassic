@@ -17,10 +17,10 @@ static const NSUInteger kMaxRecipients = 50;
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"WhatsApp Contacts";
+	self.title = WAL(@"WhatsApp Contacts");
 	CGRect b = self.view.bounds;
 	_search = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, b.size.width, 44)];
-	_search.placeholder = @"Search";
+	_search.placeholder = WAL(@"Search");
 	_search.delegate = self;
 	_search.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[self.view addSubview:_search];
@@ -33,8 +33,8 @@ static const NSUInteger kMaxRecipients = 50;
 	UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, b.size.height - 44, b.size.width, 44)];
 	bar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 	UIBarButtonItem *flex = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-	UIBarButtonItem *cancel = [[UIBarButtonItem alloc] initWithTitle:@"Cancel" style:UIBarButtonItemStyleBordered target:self action:@selector(cancel)];
-	UIBarButtonItem *done = [[UIBarButtonItem alloc] initWithTitle:@"Done" style:UIBarButtonItemStyleDone target:self action:@selector(done)];
+	UIBarButtonItem *cancel = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Cancel") style:UIBarButtonItemStyleBordered target:self action:@selector(cancel)];
+	UIBarButtonItem *done = [[UIBarButtonItem alloc] initWithTitle:WAL(@"Done") style:UIBarButtonItemStyleDone target:self action:@selector(done)];
 	cancel.width = done.width = 130;
 	bar.items = @[flex, cancel, flex, done, flex];
 	[self.view addSubview:bar];
@@ -126,12 +126,12 @@ static const NSUInteger kMaxRecipients = 50;
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = self.broadcast ? @"New Broadcast" : @"New Group";
+	self.title = self.broadcast ? WAL(@"New Broadcast") : WAL(@"New Group");
 	self.view.backgroundColor = [UIColor whiteColor];
 	_participants = [NSMutableArray array];
 	self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
 		target:self action:@selector(cancel)];
-	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:self.broadcast ? @"Send" : @"Create"
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:self.broadcast ? WAL(@"Send") : WAL(@"Create")
 		style:UIBarButtonItemStyleDone target:self action:self.broadcast ? @selector(sendBroadcast) : @selector(create)];
 	self.navigationItem.rightBarButtonItem.enabled = NO;
 	CGFloat w = self.view.bounds.size.width;
@@ -139,7 +139,7 @@ static const NSUInteger kMaxRecipients = 50;
 	// participants row
 	_participantsRow = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, 44)];
 	_participantsRow.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-	[_participantsRow addSubview:[self fieldLabel:self.broadcast ? @"To:" : @"Participants:"]];
+	[_participantsRow addSubview:[self fieldLabel:self.broadcast ? WAL(@"To:") : WAL(@"Participants:")]];
 	_tokens = [[UIView alloc] init];
 	[_participantsRow addSubview:_tokens];
 	_searchField = [[UITextField alloc] init];
@@ -158,11 +158,11 @@ static const NSUInteger kMaxRecipients = 50;
 	// subject row
 	_subjectRow = [[UIView alloc] initWithFrame:CGRectMake(0, 44, w, 44)];
 	_subjectRow.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-	UILabel *subjectLabel = [self fieldLabel:@"Subject:"];
+	UILabel *subjectLabel = [self fieldLabel:WAL(@"Subject:")];
 	[_subjectRow addSubview:subjectLabel];
 	CGFloat sx = CGRectGetMaxX(subjectLabel.frame) + 6;
 	_subjectField = [[UITextField alloc] initWithFrame:CGRectMake(sx, 12, w - sx - 46, 22)];
-	_subjectField.placeholder = @"Group Subject";
+	_subjectField.placeholder = WAL(@"Group Subject");
 	_subjectField.font = [UIFont systemFontOfSize:15];
 	_subjectField.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	_subjectField.delegate = self;
@@ -186,7 +186,7 @@ static const NSUInteger kMaxRecipients = 50;
 	[_iconButton addTarget:self action:@selector(pickIcon) forControlEvents:UIControlEventTouchUpInside];
 	[_iconRow addSubview:_iconButton];
 	UILabel *iconText = [[UILabel alloc] initWithFrame:CGRectMake(90, 26, w - 100, 40)];
-	iconText.text = @"Group Icon\n(optional)";
+	iconText.text = WAL(@"Group Icon\n(optional)");
 	iconText.numberOfLines = 2;
 	iconText.font = [UIFont systemFontOfSize:15];
 	iconText.textColor = WAColor(0x7F8A99);
@@ -233,7 +233,7 @@ static const NSUInteger kMaxRecipients = 50;
 	_messageView.delegate = self;
 	_messageView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[_messageRow addSubview:_messageView];
-	_messagePlaceholder = [self fieldLabel:@"Message"];
+	_messagePlaceholder = [self fieldLabel:WAL(@"Message")];
 	_messagePlaceholder.frame = CGRectMake(10, 10, 200, 21);
 	_messagePlaceholder.textColor = WAColor(0xB3B3B3);
 	[_messageRow addSubview:_messagePlaceholder];
@@ -248,7 +248,7 @@ static const NSUInteger kMaxRecipients = 50;
 	if (!((UIImageView *)_attachRow).image) _attachRow.backgroundColor = WAColor(0xDADFE6);
 	_attachRow.userInteractionEnabled = YES;
 	_attachRow.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-	NSArray *kinds = @[@[@"BrdtAttachCamera", @"Take Photo"], @[@"BrdtAttachGallery", @"Choose Existing Photo"]];
+	NSArray *kinds = @[@[@"BrdtAttachCamera", WAL(@"Take Photo")], @[@"BrdtAttachGallery", WAL(@"Choose Existing Photo")]];
 	for (NSUInteger i = 0; i < kinds.count; i++) {
 		UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
 		b.frame = CGRectMake(10 + i * 40, 7, 28, 23);
@@ -281,7 +281,7 @@ static const NSUInteger kMaxRecipients = 50;
 	_hint.textColor = WAColor(0x7F8A99);
 	_hint.textAlignment = NSTextAlignmentCenter;
 	_hint.backgroundColor = [UIColor clearColor];
-	_hint.text = @"IMPORTANT:\nOnly contacts with your number in their address book will receive your broadcast messages.";
+	_hint.text = WAL(@"IMPORTANT:\nOnly contacts with your number in their address book will receive your broadcast messages.");
 	[self.view addSubview:_hint];
 	[self.view bringSubviewToFront:_results];
 }
@@ -295,7 +295,7 @@ static const NSUInteger kMaxRecipients = 50;
 	[self.view endEditing:YES];
 	_pickingPhoto = YES;
 	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
-	picker.sourceType = [b.accessibilityLabel isEqualToString:@"Take Photo"] ? UIImagePickerControllerSourceTypeCamera
+	picker.sourceType = [b.accessibilityLabel isEqualToString:WAL(@"Take Photo")] ? UIImagePickerControllerSourceTypeCamera
 		: UIImagePickerControllerSourceTypePhotoLibrary;
 	picker.delegate = self;
 	[self presentViewController:picker animated:YES completion:nil];
@@ -337,8 +337,8 @@ static const NSUInteger kMaxRecipients = 50;
 			self->_creating = NO;
 			self.navigationItem.titleView = nil;
 			[self updateCreate];
-			[[[UIAlertView alloc] initWithTitle:@"Not sent" message:error.localizedDescription delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+			[[[UIAlertView alloc] initWithTitle:WAL(@"Not sent") message:error.localizedDescription delegate:nil
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			return;
 		}
 		void (^sent)(NSDictionary *) = self.onBroadcastSent;
@@ -482,8 +482,8 @@ static const NSUInteger kMaxRecipients = 50;
 
 - (BOOL)tooManyRecipients:(NSUInteger)count {
 	if (!self.broadcast || count <= kMaxRecipients) return NO;
-	[[[UIAlertView alloc] initWithTitle:nil message:[NSString stringWithFormat:@"Broadcast to at most %lu people at a time.",
-		(unsigned long)kMaxRecipients] delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+	[[[UIAlertView alloc] initWithTitle:nil message:[NSString stringWithFormat:WAL(@"Broadcast to at most %lu people at a time."),
+		(unsigned long)kMaxRecipients] delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 	return YES;
 }
 
@@ -548,12 +548,12 @@ static const NSUInteger kMaxRecipients = 50;
 
 - (void)pickIcon {
 	[self.view endEditing:YES];
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Group Icon" delegate:self cancelButtonTitle:nil
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:WAL(@"Group Icon") delegate:self cancelButtonTitle:nil
 		destructiveButtonTitle:nil otherButtonTitles:nil];
-	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) [sheet addButtonWithTitle:@"Take Photo"];
-	[sheet addButtonWithTitle:@"Choose Existing Photo"];
-	if (_icon) sheet.destructiveButtonIndex = [sheet addButtonWithTitle:@"Delete Photo"];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) [sheet addButtonWithTitle:WAL(@"Take Photo")];
+	[sheet addButtonWithTitle:WAL(@"Choose Existing Photo")];
+	if (_icon) sheet.destructiveButtonIndex = [sheet addButtonWithTitle:WAL(@"Delete Photo")];
+	sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 	[sheet showInView:self.view];
 }
 
@@ -565,7 +565,7 @@ static const NSUInteger kMaxRecipients = 50;
 		return;
 	}
 	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
-	picker.sourceType = [[sheet buttonTitleAtIndex:index] isEqualToString:@"Take Photo"] ? UIImagePickerControllerSourceTypeCamera
+	picker.sourceType = [[sheet buttonTitleAtIndex:index] isEqualToString:WAL(@"Take Photo")] ? UIImagePickerControllerSourceTypeCamera
 		: UIImagePickerControllerSourceTypePhotoLibrary;
 	picker.allowsEditing = YES;
 	picker.delegate = self;
@@ -611,8 +611,8 @@ static const NSUInteger kMaxRecipients = 50;
 			self->_creating = NO;
 			self.navigationItem.titleView = nil;
 			[self updateCreate];
-			[[[UIAlertView alloc] initWithTitle:nil message:@"Group was not created. Tap “Try Again” to create this group."
-				delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+			[[[UIAlertView alloc] initWithTitle:nil message:WAL(@"Group was not created. Tap “Try Again” to create this group.")
+				delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			return;
 		}
 		NSString *jid = json[@"jid"];
@@ -622,9 +622,9 @@ static const NSUInteger kMaxRecipients = 50;
 				[[NSNotificationCenter defaultCenter] postNotificationName:@"WAOpenChatNotification" object:nil
 					userInfo:@{@"jid": jid, @"name": subject, @"group": @YES}];
 				if (failed.count) {
-					NSString *msg = [NSString stringWithFormat:@"Failed to add %@ to the group “%@”.",
+					NSString *msg = [NSString stringWithFormat:WAL(@"Failed to add %@ to the group “%@”."),
 						[failed componentsJoinedByString:@", "], subject];
-					[[[UIAlertView alloc] initWithTitle:nil message:msg delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+					[[[UIAlertView alloc] initWithTitle:nil message:msg delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 				}
 			}];
 		};

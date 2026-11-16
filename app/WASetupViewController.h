@@ -27,6 +27,14 @@ extern NSString *const WALinkNeededNotification;
 @end
 
 // bridge address + setup code
+// offers the 2.10 look before the qr code, if the bridge doesn't have it yet
+@interface WALookChoiceViewController : UITableViewController
+@property (nonatomic, copy) void (^finished)(void);
+@property (nonatomic) BOOL ios5Style;
+// asks the bridge, pushes this page or the qr code. done runs once something is pushed
++ (void)pushNextFrom:(UIViewController *)from ios5Style:(BOOL)ios5 finished:(void (^)(void))finished done:(void (^)(void))done;
+@end
+
 @interface WAConnectViewController : UITableViewController <UITextFieldDelegate>
 @property (nonatomic, copy) void (^finished)(void);
 @property (nonatomic) BOOL ios5Style;

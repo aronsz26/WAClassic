@@ -8,7 +8,7 @@
 
 NSString *WANotificationText(NSDictionary *m) {
 	NSString *kind = m[@"kind"], *text = m[@"text"];
-	if ([kind isEqualToString:@"audio"]) text = @"Audio";
+	if ([kind isEqualToString:@"audio"]) text = WAL(@"Audio");
 	else if (![kind isEqualToString:@"text"]) text = text.length ? [NSString stringWithFormat:@"%@: %@", WAKindLabel(kind), text] : WAKindLabel(kind);
 	NSString *chatName = m[@"chatName"] ?: @"";
 	BOOL group = [m[@"chat"] hasSuffix:@"@g.us"];
@@ -24,7 +24,7 @@ NSString *WANotificationText(NSDictionary *m) {
 	BOOL _running, _sent, _tls;
 	NSDate *_openedAt;
 	UIBackgroundTaskIdentifier _task, _retryTask;
-	BOOL _choosing;
+	BOOL _choosing, _retryPending;
 	NSUInteger _retries;
 }
 
@@ -78,7 +78,22 @@ NSString *WANotificationText(NSDictionary *m) {
 	if (!_running) return;
 	[self count:@"network changed"];
 	_retries = 0;
+	if (![WAClient shared].networkUp) {
+		[self close];
+		[self waitForNetwork];
+		return;
+	}
 	[self chooseAndReconnect];
+}
+
+// no network at all (dead spot, plane, booting): every try fails at once with "no route to host".
+// keep the time ios gives us and let the next network change reconnect, keepalive if it never comes
+- (void)waitForNetwork {
+	WALog(@"background: no network, waiting");
+	[self count:@"offline"];
+	UIApplication *app = [UIApplication sharedApplication];
+	if (!_retryTask || _retryTask == UIBackgroundTaskInvalid)
+		_retryTask = [app beginBackgroundTaskWithExpirationHandler:^{ [self endRetryTask]; }];
 }
 
 // "bg stream error 54 away cell", diagnostics with consent 2 only
@@ -204,6 +219,12 @@ NSString *WANotificationText(NSDictionary *m) {
 			break;
 		case NSStreamEventErrorOccurred: {
 			WALog(@"stream error: %@", stream.streamError);
+			if (![WAClient shared].networkUp) {
+				[self close];
+				[self waitForNetwork];
+				[self endTask];
+				break;
+			}
 			static const double limits[] = {60, 300, 600};
 			NSTimeInterval age = _openedAt ? -[_openedAt timeIntervalSinceNow] : 0;
 			[self count:[NSString stringWithFormat:@"stream error %ld after %@", (long)stream.streamError.code,
@@ -226,6 +247,7 @@ NSString *WANotificationText(NSDictionary *m) {
 	UIApplication *app = [UIApplication sharedApplication];
 	if (!_retryTask || _retryTask == UIBackgroundTaskInvalid)
 		_retryTask = [app beginBackgroundTaskWithExpirationHandler:^{ [self endRetryTask]; }];
+	if (_retryPending) return; // stream error and network change both land here, one chain is enough
 	NSTimeInterval left = app.backgroundTimeRemaining; // huge while in front
 	if (!_running || _retries >= sizeof(delays) / sizeof(delays[0]) || left < 8) {
 		WALog(@"background: no more retries, keepalive takes over");
@@ -236,7 +258,9 @@ NSString *WANotificationText(NSDictionary *m) {
 	NSTimeInterval delay = MIN(delays[_retries++], left - 5);
 	WALog(@"background: retry %lu in %.0f s (%@ left)", (unsigned long)_retries, delay,
 		left > 100000 ? @"all" : [NSString stringWithFormat:@"%.0f s", left]);
+	_retryPending = YES;
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		self->_retryPending = NO;
 		// already back (keepalive, network change) or stopped. the task stays until connected or out of retries
 		if (self->_running && !self->_in) [self chooseAndReconnect];
 		else [self endRetryTask];
@@ -287,8 +311,8 @@ NSString *WANotificationText(NSDictionary *m) {
 		if (!WAPrefBool(group ? WAPrefGroupAlerts : WAPrefMessageAlerts)) continue;
 		UILocalNotification *n = [[UILocalNotification alloc] init];
 		n.alertBody = WAPrefBool(WAPrefShowPreview) ? WANotificationText(m)
-			: [NSString stringWithFormat:@"Message from %@", m[@"chatName"] ?: @"WhatsApp"];
-		n.alertAction = @"Reply";
+			: [NSString stringWithFormat:WAL(@"Message from %@"), m[@"chatName"] ?: @"WhatsApp"];
+		n.alertAction = WAL(@"Reply");
 		n.soundName = WASoundFile(WAPrefString(group ? WAPrefGroupSound : WAPrefMessageSound));
 		n.applicationIconBadgeNumber = unread;
 		n.userInfo = @{@"chat": m[@"chat"] ?: @""};

@@ -49,10 +49,10 @@ NSString *const WADiagWhat = @"Once a day: iPhone model, iOS and app version, br
 	// 1.0.2 yeses carry over without asking again, see -consent
 	if (_asking || [self.d boolForKey:@"diagAsked"] || ![WAClient shared].configured || [WACall shared].live) return;
 	_asking = YES;
-	NSString *never = @"\n\nNever messages, contacts, numbers, names, your IP or location. You can change this in Settings › Chat Settings › Advanced.";
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Help Improve WA Classic?"
-		message:[[@"Send anonymous diagnostics. " stringByAppendingString:WADiagWhat] stringByAppendingString:never]
-		delegate:self cancelButtonTitle:@"Don't Send" otherButtonTitles:@"Send", nil];
+	NSString *never = WAL(@"\n\nNever messages, contacts, numbers, names, your IP or location. You can change this in Settings › Chat Settings › Advanced.");
+	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:WAL(@"Help Improve WA Classic?")
+		message:[[WAL(@"Send anonymous diagnostics. ") stringByAppendingString:WAL(WADiagWhat)] stringByAppendingString:never]
+		delegate:self cancelButtonTitle:WAL(@"Don't Send") otherButtonTitles:WAL(@"Send"), nil];
 	[alert show];
 }
 
@@ -208,6 +208,32 @@ static NSString *ShortCrash(NSString *text) {
 	return joined.length > 7500 ? [joined substringToIndex:7500] : joined;
 }
 
+// the tweak is loaded in every springboard, so its name is in every springboard crash.
+// ours only if an address of the crashed thread or the exception backtrace lies inside it (pass ShortCrash text,
+// the full log has registers and other threads)
+static BOOL CrashedInCallScreen(NSString *text) {
+	NSRange images = [text rangeOfString:@"Binary Images"];
+	if (images.location == NSNotFound) return NO;
+	unsigned long long lo = 0, hi = 0;
+	for (NSString *line in [[text substringFromIndex:images.location] componentsSeparatedByString:@"\n"]) {
+		if ([line rangeOfString:@"WACallScreen"].location == NSNotFound) continue;
+		NSScanner *s = [NSScanner scannerWithString:line];
+		[s scanHexLongLong:&lo];
+		[s scanUpToString:@"0x" intoString:NULL];
+		[s scanHexLongLong:&hi];
+		break;
+	}
+	if (!lo || hi <= lo) return NO;
+	NSScanner *s = [NSScanner scannerWithString:[text substringToIndex:images.location]];
+	while (![s isAtEnd]) {
+		[s scanUpToString:@"0x" intoString:NULL];
+		unsigned long long a = 0;
+		if (![s scanHexLongLong:&a]) break;
+		if (a >= lo && a <= hi) return YES;
+	}
+	return NO;
+}
+
 - (NSArray *)newCrashes:(NSTimeInterval *)newest {
 	NSFileManager *fm = [NSFileManager defaultManager];
 	NSTimeInterval seen = [self.d doubleForKey:@"diagCrashSeen"];
@@ -221,7 +247,7 @@ static NSString *ShortCrash(NSString *text) {
 		if (ts <= seen) continue;
 		NSString *text = [NSDictionary dictionaryWithContentsOfFile:path][@"description"];
 		if (![text isKindOfClass:[NSString class]]) continue;
-		if (sb && [text rangeOfString:@"WACallScreen"].location == NSNotFound) continue; // springboard crashes that aren't ours
+		if (sb && !CrashedInCallScreen(ShortCrash(text))) continue; // springboard crashes that aren't ours
 		[out addObject:@{@"ts": @((long long)ts), @"kind": sb ? @"springboard" : @"app", @"text": ShortCrash(text)}];
 		*newest = MAX(*newest, ts);
 	}

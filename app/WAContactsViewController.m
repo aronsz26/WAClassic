@@ -15,7 +15,7 @@
 
 - (instancetype)init {
 	if ((self = [super initWithStyle:UITableViewStylePlain])) {
-		self.title = @"All Contacts";
+		self.title = WAL(@"All Contacts");
 		self.tabBarItem = [[UITabBarItem alloc] initWithTabBarSystemItem:UITabBarSystemItemContacts tag:2];
 	}
 	return self;
@@ -26,7 +26,7 @@
 	self.tableView.rowHeight = 50;
 	UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44 + 30)];
 	_search = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, header.bounds.size.width, 44)];
-	_search.placeholder = @"Search";
+	_search.placeholder = WAL(@"Search");
 	_search.delegate = self;
 	_search.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 	[header addSubview:_search];
@@ -51,7 +51,7 @@
 		if (![json[@"contacts"] isKindOfClass:[NSArray class]]) return;
 		self->_all = json[@"contacts"];
 		self->_myNumber = json[@"me"];
-		self->_myNumberLabel.text = self->_myNumber.length ? [NSString stringWithFormat:@"My Number: %@", self->_myNumber] : nil;
+		self->_myNumberLabel.text = self->_myNumber.length ? [NSString stringWithFormat:WAL(@"My Number: %@"), self->_myNumber] : nil;
 		[self filter];
 	}];
 }
@@ -118,7 +118,7 @@
 	NSUInteger n = 0;
 	for (NSArray *s in _sections) n += s.count;
 	UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 50)];
-	l.text = n ? [NSString stringWithFormat:@"%lu %@", (unsigned long)n, n == 1 ? @"Contact" : @"Contacts"] : @"No Contacts";
+	l.text = n ? [NSString stringWithFormat:@"%lu %@", (unsigned long)n, n == 1 ? WAL(@"Contact") : WAL(@"Contacts")] : WAL(@"No Contacts");
 	l.font = [UIFont systemFontOfSize:17];
 	l.textColor = WAColor(0x7F8A99);
 	l.textAlignment = NSTextAlignmentCenter;

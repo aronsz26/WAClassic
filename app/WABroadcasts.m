@@ -9,12 +9,12 @@
 
 static NSString *RecipientsText(NSDictionary *b) {
 	NSUInteger n = [b[@"recipients"] count];
-	return [NSString stringWithFormat:n == 1 ? @"%lu recipient" : @"%lu recipients", (unsigned long)n];
+	return [NSString stringWithFormat:n == 1 ? WAL(@"%lu recipient") : WAL(@"%lu recipients"), (unsigned long)n];
 }
 
 static NSString *BroadcastText(NSDictionary *b) {
 	NSString *text = b[@"text"];
-	if ([b[@"kind"] isEqualToString:@"image"]) return text.length ? [@"Photo: " stringByAppendingString:text] : @"Photo";
+	if ([b[@"kind"] isEqualToString:@"image"]) return text.length ? [WAL(@"Photo: ") stringByAppendingString:text] : WAL(@"Photo");
 	return text;
 }
 
@@ -49,7 +49,7 @@ static void Compose(UINavigationController *nav, UIViewController *presenter) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	self.title = @"Broadcasts";
+	self.title = WAL(@"Broadcasts");
 	self.tableView.rowHeight = 64;
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
 		target:self action:@selector(add)];
@@ -128,7 +128,7 @@ static void Compose(UINavigationController *nav, UIViewController *presenter) {
 - (instancetype)initWithBroadcast:(NSDictionary *)broadcast {
 	if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
 		_broadcast = broadcast;
-		self.title = @"Broadcast";
+		self.title = WAL(@"Broadcast");
 	}
 	return self;
 }
@@ -142,7 +142,7 @@ static void Compose(UINavigationController *nav, UIViewController *presenter) {
 	UIImage *rebroadcast = WAImg(@"BrdtRebroadcast");
 	self.navigationItem.rightBarButtonItem = rebroadcast
 		? [[UIBarButtonItem alloc] initWithImage:rebroadcast style:UIBarButtonItemStyleBordered target:self action:@selector(rebroadcast)]
-		: [[UIBarButtonItem alloc] initWithTitle:@"Resend" style:UIBarButtonItemStyleBordered target:self action:@selector(rebroadcast)];
+		: [[UIBarButtonItem alloc] initWithTitle:WAL(@"Resend") style:UIBarButtonItemStyleBordered target:self action:@selector(rebroadcast)];
 	self.tableView.tableHeaderView = [self messageArea];
 	// ticks come via long poll
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh) name:WAClientUpdatesNotification object:nil];
@@ -232,8 +232,8 @@ static void Compose(UINavigationController *nav, UIViewController *presenter) {
 	[[WAClient shared] post:@"/api/broadcast/resend" params:@{@"id": [_broadcast[@"id"] description]} completion:^(id json, NSError *error) {
 		self.navigationItem.rightBarButtonItem.enabled = YES;
 		if (error || ![json[@"broadcast"] isKindOfClass:[NSDictionary class]]) {
-			[[[UIAlertView alloc] initWithTitle:@"Not sent" message:error.localizedDescription delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+			[[[UIAlertView alloc] initWithTitle:WAL(@"Not sent") message:error.localizedDescription delegate:nil
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			return;
 		}
 		// replace this page with the new one
@@ -268,8 +268,8 @@ static void Compose(UINavigationController *nav, UIViewController *presenter) {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 	_selected = _broadcast[@"recipients"][indexPath.row];
 	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:_selected[@"name"] delegate:self cancelButtonTitle:nil
-		destructiveButtonTitle:nil otherButtonTitles:@"Message", @"Call", @"Info", nil];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+		destructiveButtonTitle:nil otherButtonTitles:WAL(@"Message"), WAL(@"Call"), WAL(@"Info"), nil];
+	sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 	[sheet showInView:self.tabBarController.view ?: self.view];
 }
 
@@ -277,10 +277,10 @@ static void Compose(UINavigationController *nav, UIViewController *presenter) {
 	if (index == sheet.cancelButtonIndex || !_selected) return;
 	NSString *jid = _selected[@"jid"], *name = _selected[@"name"] ?: @"";
 	NSString *choice = [sheet buttonTitleAtIndex:index];
-	if ([choice isEqualToString:@"Message"]) {
+	if ([choice isEqualToString:WAL(@"Message")]) {
 		[[NSNotificationCenter defaultCenter] postNotificationName:@"WAOpenChatNotification" object:nil
 			userInfo:@{@"jid": jid, @"name": name}];
-	} else if ([choice isEqualToString:@"Call"]) {
+	} else if ([choice isEqualToString:WAL(@"Call")]) {
 		[[WACall shared] callJID:jid name:name];
 	} else {
 		[self.navigationController pushViewController:[[WAInfoViewController alloc] initWithJID:jid name:name group:NO] animated:YES];

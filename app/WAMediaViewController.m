@@ -111,7 +111,7 @@
 		iv.center = CGPointMake(self.view.bounds.size.width / 2, 150);
 		[_scroll addSubview:iv];
 		UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(20, CGRectGetMaxY(iv.frame) + 10, self.view.bounds.size.width - 40, 24)];
-		l.text = @"No Media";
+		l.text = WAL(@"No Media");
 		l.font = [UIFont boldSystemFontOfSize:17];
 		l.textColor = WAColor(0x7F8A99);
 		l.textAlignment = NSTextAlignmentCenter;

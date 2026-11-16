@@ -8,18 +8,20 @@ import (
 
 func TestWantedAsset(t *testing.T) {
 	for in, want := range map[string]string{
-		"Payload/WhatsApp.app/Chats@2x.png":                 "Chats@2x.png",
-		"Payload/WhatsApp.app/My status.png":                "My status.png",
-		"Payload/WhatsApp.app/mark_d@2x.png":                "mark_d@2x.png",
-		"Payload/WhatsApp.app/Tri-tone.caf":                 "Tri-tone.caf",
-		"Payload/WhatsApp.app/PaymentWP@2x.jpg":             "PaymentWP@2x.jpg",
-		"Payload/WhatsApp.app/Wallpaper/wallpaper_01.png":   "Wallpaper/wallpaper_01.png",
-		"Payload/WhatsApp.app/Icon@2x.png":                  "",
-		"Payload/WhatsApp.app/WhatsApp":                     "",
-		"Payload/WhatsApp.app/en.lproj/Localizable.strings": "",
-		"Payload/WhatsApp.app/Wallpaper/../../x.png":        "",
-		"Payload/WhatsApp.app/Wallpaper/":                   "",
-		"iTunesArtwork":                                     "",
+		"Payload/WhatsApp.app/Chats@2x.png":                   "Chats@2x.png",
+		"Payload/WhatsApp.app/My status.png":                  "My status.png",
+		"Payload/WhatsApp.app/mark_d@2x.png":                  "mark_d@2x.png",
+		"Payload/WhatsApp.app/Tri-tone.caf":                   "Tri-tone.caf",
+		"Payload/WhatsApp.app/PaymentWP@2x.jpg":               "PaymentWP@2x.jpg",
+		"Payload/WhatsApp.app/Wallpaper/wallpaper_01.png":     "Wallpaper/wallpaper_01.png",
+		"Payload/WhatsApp.app/Icon@2x.png":                    "",
+		"Payload/WhatsApp.app/WhatsApp":                       "",
+		"Payload/WhatsApp.app/en.lproj/Localizable.strings":   "en.lproj/Localizable.strings",
+		"Payload/WhatsApp.app/de.lproj/Countries.strings":     "",
+		"Payload/WhatsApp.app/x/de.lproj/Localizable.strings": "",
+		"Payload/WhatsApp.app/Wallpaper/../../x.png":          "",
+		"Payload/WhatsApp.app/Wallpaper/":                     "",
+		"iTunesArtwork":                                       "",
 	} {
 		if got := wantedAsset(in); got != want {
 			t.Errorf("wantedAsset(%q) = %q, want %q", in, got, want)
@@ -38,7 +40,8 @@ func TestAssetsDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%d files", len(m.Files))
-	for _, want := range []string{"GreenBubbleOut@2x.png", "My status@2x.png", "Tri-tone.caf", "Default-568h@2x.png", "Wallpaper/wallpaper_01.png"} {
+	for _, want := range []string{"GreenBubbleOut@2x.png", "My status@2x.png", "Tri-tone.caf", "Default-568h@2x.png", "Wallpaper/wallpaper_01.png",
+		"de.lproj/Localizable.strings", "zh-Hans.lproj/Localizable.strings"} {
 		if _, err := os.Stat(filepath.Join(a.dir, want)); err != nil {
 			t.Error(err)
 		}
@@ -77,5 +80,20 @@ func TestFlatAssetsDownload(t *testing.T) {
 	t.Logf("%v", m.Files)
 	if len(m.Files) != 6 {
 		t.Errorf("%d files, want 6", len(m.Files))
+	}
+}
+
+// bridge with the old file list keeps serving it and is marked for a refresh
+func TestAssetsOldListStays(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "assets"), 0o700)
+	os.WriteFile(filepath.Join(dir, "assets", "manifest.json"), []byte(`{"version":"2.10.2","files":[{"name":"Chats.png","size":1}]}`), 0o600)
+	a := newAssets(dir, classicLook)
+	if a.state != "ready" || !a.stale || !a.byName["Chats.png"] {
+		t.Fatalf("state %q stale %v, want ready + stale with the old files", a.state, a.stale)
+	}
+	os.WriteFile(filepath.Join(dir, "assets", "manifest.json"), []byte(`{"version":"`+classicLook.manifestID()+`","files":[]}`), 0o600)
+	if b := newAssets(dir, classicLook); b.stale {
+		t.Fatal("current list marked stale")
 	}
 }

@@ -15,3 +15,9 @@
 @interface WABubbleColorsController : WATableController
 - (instancetype)initWithJID:(NSString *)jid;
 @end
+
+// Settings › Languages: always called that, languages in their own names. switching posts
+// WALanguageChangedNotification, the app builds its tabs again
+extern NSString *const WALanguageChangedNotification;
+@interface WALanguagesController : WATableController
+@end

@@ -49,12 +49,20 @@ func (b *Bridge) handle(evt any) {
 		b.onChatPresence(e)
 	case *events.DeleteChat:
 		b.onDeleteChat(e)
+	case *events.Archive:
+		chat := b.chatKey(context.Background(), e.JID)
+		if err := b.store.SetArchived(chat.String(), e.Action.GetArchived()); err != nil {
+			log.Printf("store archive state: %v", err)
+		} else {
+			b.store.notify()
+		}
 	case *events.AppStateSyncComplete:
 		b.onAppStateSyncComplete(e)
 	case *events.PairSuccess:
 		log.Printf("paired as %s", e.ID)
 	case *events.Connected:
 		log.Printf("connected")
+		b.syncArchiveOnce()
 	case *events.Disconnected:
 		errCounts.add("wa disconnected")
 	case *events.KeepAliveTimeout:
@@ -91,6 +99,10 @@ func skipChat(jid types.JID) bool {
 
 func (b *Bridge) onMessage(e *events.Message, live bool) {
 	ctx := context.Background()
+	if isStatusChat(e.Info.Chat) && e.Message != nil {
+		b.onStatus(ctx, e)
+		return
+	}
 	chat := b.chatKey(ctx, e.Info.Chat)
 	if skipChat(chat) || e.Message == nil {
 		return
@@ -100,12 +112,13 @@ func (b *Bridge) onMessage(e *events.Message, live bool) {
 		return
 	}
 	kind, text := describe(e.Message)
-	if kind == "" {
-		return // receipts, reactions etc
+	id := messageID(e)
+	if kind == "" || id == "" {
+		return // receipts, reactions, motion photo copies etc
 	}
 	sender := b.chatKey(ctx, e.Info.Sender)
 	m := &Message{
-		ID:     e.Info.ID,
+		ID:     id,
 		Chat:   chat.String(),
 		Sender: sender.String(),
 		FromMe: e.Info.IsFromMe,
@@ -134,6 +147,29 @@ func (b *Bridge) onMessage(e *events.Message, live bool) {
 			b.store.notify()
 		}
 	}
+}
+
+// new whatsapp sends hd photos/videos twice: the normal one and an hd copy pointing at it.
+// the copy gets the parent's id, so whichever comes second is ignored.
+// motion photos send the moving part as a video copy, that one is dropped ("").
+// albums are linked the same way but are separate photos, those stay.
+func messageID(e *events.Message) string {
+	if !e.IsAssociatedChild {
+		return e.Info.ID
+	}
+	assoc := e.Message.GetMessageContextInfo().GetMessageAssociation()
+	parent := assoc.GetParentMessageKey().GetID()
+	if parent == "" {
+		return e.Info.ID
+	}
+	switch assoc.GetAssociationType() {
+	case waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD, waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD,
+		waE2E.MessageAssociation_HEVC_VIDEO_DUAL_UPLOAD:
+		return parent
+	case waE2E.MessageAssociation_MOTION_PHOTO:
+		return ""
+	}
+	return e.Info.ID
 }
 
 // describe picks what the old app can show.
@@ -192,15 +228,30 @@ func (b *Bridge) onReceipt(e *events.Receipt) {
 
 func (b *Bridge) onHistory(e *events.HistorySync) {
 	ctx := context.Background()
-	count := 0
+	count, archived := 0, 0
 	for _, conv := range e.Data.GetConversations() {
 		jid, err := types.ParseJID(conv.GetID())
 		if err != nil {
 			continue
 		}
 		chat := b.chatKey(ctx, jid)
+		if isStatusChat(jid) {
+			for _, hm := range conv.GetMessages() {
+				if evt, err := b.cli.ParseWebMessage(jid, hm.GetMessage()); err == nil {
+					b.onMessage(evt, false)
+				}
+			}
+			continue
+		}
 		if skipChat(chat) {
 			continue
+		}
+		if conv.Archived != nil {
+			if err := b.store.SetArchived(chat.String(), conv.GetArchived()); err != nil {
+				log.Printf("store history archive state: %v", err)
+			} else if conv.GetArchived() {
+				archived++
+			}
 		}
 		for _, hm := range conv.GetMessages() {
 			evt, err := b.cli.ParseWebMessage(jid, hm.GetMessage())
@@ -216,7 +267,7 @@ func (b *Bridge) onHistory(e *events.HistorySync) {
 		}
 		b.store.SetUnread(chat.String(), int(conv.GetUnreadCount()))
 	}
-	log.Printf("history sync %v: %d conversations, %d messages", e.Data.GetSyncType(), len(e.Data.GetConversations()), count)
+	log.Printf("history sync %v: %d conversations, %d messages, %d archived", e.Data.GetSyncType(), len(e.Data.GetConversations()), count, archived)
 	b.store.notify()
 }
 
@@ -243,6 +294,9 @@ func (b *Bridge) ensureChatName(ctx context.Context, chat types.JID, pushName st
 
 // contactName: address book name first, then push name.
 func (b *Bridge) contactName(ctx context.Context, jid types.JID) string {
+	if b.cli.Store.Contacts == nil { // not linked
+		return ""
+	}
 	c, err := b.cli.Store.Contacts.GetContact(ctx, jid)
 	if err == nil && c.Found {
 		if n := firstNonEmpty(c.FullName, c.FirstName, c.BusinessName, c.PushName); n != "" {

@@ -4,6 +4,7 @@
 #import "WAAssets.h"
 #import "WAClient.h"
 #import "WAVideoCallViewController.h"
+#import "WALocalize.h"
 
 static NSString *const kTelephonyUI = @"/System/Library/PrivateFrameworks/TelephonyUI.framework";
 static NSString *const kPhoneApp = @"/Applications/MobilePhone.app";
@@ -79,7 +80,7 @@ static WACallViewController *current;
 	_grid.autoresizingMask = UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
 	[v addSubview:_grid];
 	NSArray *glyphs = @[@"mute", @"dialer", @"speaker", @"addcall", @"hold", @"contacts"];
-	NSArray *titles = @[@"mute", @"keypad", @"speaker", @"add call", @"hold", @"contacts"];
+	NSArray *titles = @[WAL(@"mute"), WAL(@"keypad"), WAL(@"speaker"), WAL(@"add call"), WAL(@"hold"), WAL(@"contacts")];
 	for (int i = 0; i < 6; i++) {
 		int col = i % 3, row = i / 3;
 		CGFloat x = col == 0 ? 0 : (col == 1 ? colW[0] : colW[0] + colW[1]);
@@ -133,12 +134,12 @@ static WACallViewController *current;
 	bar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
 	[v addSubview:bar];
 	CGFloat by = barTop + 16;
-	_endButton = [self barButton:@"bottombarred" title:@"End" glyph:@"decline" frame:CGRectMake(18, by, W - 36, 47)];
+	_endButton = [self barButton:@"bottombarred" title:WAL(@"End") glyph:@"decline" frame:CGRectMake(18, by, W - 36, 47)];
 	[_endButton addTarget:self action:@selector(end) forControlEvents:UIControlEventTouchUpInside];
 	CGFloat half = floorf((W - 36 - 10) / 2);
-	_declineButton = [self barButton:@"bottombarred" title:@"Decline" glyph:nil frame:CGRectMake(18, by, half, 47)];
+	_declineButton = [self barButton:@"bottombarred" title:WAL(@"Decline") glyph:nil frame:CGRectMake(18, by, half, 47)];
 	[_declineButton addTarget:self action:@selector(end) forControlEvents:UIControlEventTouchUpInside];
-	_answerButton = [self barButton:@"bottombargreen" title:@"Answer" glyph:nil frame:CGRectMake(W - 18 - half, by, half, 47)];
+	_answerButton = [self barButton:@"bottombargreen" title:WAL(@"Answer") glyph:nil frame:CGRectMake(W - 18 - half, by, half, 47)];
 	[_answerButton addTarget:self action:@selector(answer) forControlEvents:UIControlEventTouchUpInside];
 	for (UIButton *b in @[_endButton, _declineButton, _answerButton]) [v addSubview:b];
 
@@ -245,9 +246,9 @@ static WACallViewController *current;
 	NSString *state = info[@"state"] ?: @"ended";
 	_nameLabel.text = [info[@"name"] length] ? info[@"name"] : @"WhatsApp";
 	BOOL ringing = [state isEqualToString:@"ringing"], ended = [state isEqualToString:@"ended"];
-	if (ringing) _statusLabel.text = call.video || call.peerVideo ? @"WhatsApp video call" : @"WhatsApp voice call";
-	else if ([state isEqualToString:@"calling"]) _statusLabel.text = [info[@"callback"] boolValue] ? @"calling back…" : @"calling…";
-	else if ([state isEqualToString:@"connecting"]) _statusLabel.text = @"connecting…";
+	if (ringing) _statusLabel.text = call.video || call.peerVideo ? WAL(@"WhatsApp video call") : WAL(@"WhatsApp voice call");
+	else if ([state isEqualToString:@"calling"]) _statusLabel.text = [info[@"callback"] boolValue] ? WAL(@"calling back…") : WAL(@"calling…");
+	else if ([state isEqualToString:@"connecting"]) _statusLabel.text = WAL(@"connecting…");
 	else if ([state isEqualToString:@"active"]) {
 		int secs = call.activeSince ? (int)-[call.activeSince timeIntervalSinceNow] : 0;
 		_statusLabel.text = secs >= 3600 ? [NSString stringWithFormat:@"%d:%02d:%02d", secs / 3600, secs / 60 % 60, secs % 60]
@@ -276,14 +277,14 @@ static WACallViewController *current;
 
 - (NSString *)endText:(NSString *)reason {
 	reason = reason.lowercaseString;
-	if ([reason rangeOfString:@"busy"].location != NSNotFound) return @"busy";
-	if ([reason rangeOfString:@"reject"].location != NSNotFound || [reason rangeOfString:@"declin"].location != NSNotFound) return @"declined";
-	if ([reason rangeOfString:@"timeout"].location != NSNotFound || [reason rangeOfString:@"unanswered"].location != NSNotFound) return @"no answer";
+	if ([reason rangeOfString:@"busy"].location != NSNotFound) return WAL(@"busy");
+	if ([reason rangeOfString:@"reject"].location != NSNotFound || [reason rangeOfString:@"declin"].location != NSNotFound) return WAL(@"declined");
+	if ([reason rangeOfString:@"timeout"].location != NSNotFound || [reason rangeOfString:@"unanswered"].location != NSNotFound) return WAL(@"no answer");
 	if (reason.length && ![reason isEqualToString:@"local"] && [reason rangeOfString:@"hang"].location == NSNotFound
 		&& [reason rangeOfString:@"terminate"].location == NSNotFound) {
 		NSLog(@"WA4S call ended: %@", reason);
 	}
-	return @"call ended";
+	return WAL(@"call ended");
 }
 
 - (void)close {

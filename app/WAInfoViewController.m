@@ -33,7 +33,7 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 		_jid = [jid copy];
 		_name = [name copy];
 		_group = group;
-		self.title = group ? @"Group Info" : @"Contact Info";
+		self.title = group ? WAL(@"Group Info") : WAL(@"Contact Info");
 	}
 	return self;
 }
@@ -160,13 +160,13 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	if (_group) self.tableView.tableFooterView = [self exitButton];
 	if (_group) {
 		NSMutableArray *parts = [NSMutableArray array];
-		if ([_info[@"creator"] length]) [parts addObject:[NSString stringWithFormat:@"Created by %@", _info[@"creator"]]];
+		if ([_info[@"creator"] length]) [parts addObject:[NSString stringWithFormat:WAL(@"Created by %@"), _info[@"creator"]]];
 		if ([_info[@"created"] longLongValue] > 0) [parts addObject:WAShortTime([_info[@"created"] longLongValue])];
 		_aboutLabel.text = [parts componentsJoinedByString:@", "];
-		_subLabel.text = [NSString stringWithFormat:@"%lu participants", (unsigned long)[_info[@"participants"] count]];
+		_subLabel.text = [NSString stringWithFormat:WAL(@"%lu participants"), (unsigned long)[_info[@"participants"] count]];
 	} else {
 		NSString *about = _info[@"about"];
-		_aboutLabel.text = about.length ? about : @"*** no status ***";
+		_aboutLabel.text = about.length ? about : WAL(@"*** no status ***");
 		_subLabel.text = [self presenceText:_info[@"presence"]];
 	}
 	// 2 line about
@@ -181,7 +181,7 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 
 - (NSString *)presenceText:(NSDictionary *)p {
 	if (![p isKindOfClass:[NSDictionary class]]) return nil;
-	if ([p[@"online"] boolValue]) return @"online";
+	if ([p[@"online"] boolValue]) return WAL(@"online");
 	long long ts = [p[@"lastSeen"] longLongValue];
 	return ts > 0 ? WALastSeen(ts) : nil;
 }
@@ -228,10 +228,10 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	if (tableView == _subjectTable) return nil;
 	NSInteger first = [_sections[section][0] integerValue];
 	if (first == WARowMember) {
-		return [NSString stringWithFormat:@"Participants: %lu of %@", (unsigned long)[_info[@"participants"] count], @"1024"];
+		return [NSString stringWithFormat:WAL(@"Participants: %lu of %@"), (unsigned long)[_info[@"participants"] count], @"1024"];
 	}
-	if (first == WARowPhone) return @"Phone Number";
-	if (first == WARowTopic) return @"Group Description";
+	if (first == WARowPhone) return WAL(@"Phone Number");
+	if (first == WARowTopic) return WAL(@"Group Description");
 	return nil;
 }
 
@@ -258,7 +258,7 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	WARow kind = [self rowKind:indexPath];
 	if (kind == WARowMember && ![self participantAt:indexPath.row]) {
 		UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-		cell.textLabel.text = @"Add Participant...";
+		cell.textLabel.text = WAL(@"Add Participant...");
 		cell.textLabel.textColor = WAColor(0x385487);
 		cell.textLabel.textAlignment = NSTextAlignmentCenter;
 		return cell;
@@ -279,32 +279,32 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 			break;
 		case WARowMessage:
 		case WARowCall:
-			cell.textLabel.text = kind == WARowMessage ? @"Send Message" : @"Voice Call";
+			cell.textLabel.text = kind == WARowMessage ? WAL(@"Send Message") : WAL(@"Voice Call");
 			cell.textLabel.textAlignment = NSTextAlignmentCenter;
 			cell.textLabel.textColor = WAColor(0x385487);
 			break;
 		case WARowBlock:
-			cell.textLabel.text = [_blocked boolValue] ? @"Unblock" : @"Block";
+			cell.textLabel.text = [_blocked boolValue] ? WAL(@"Unblock") : WAL(@"Block");
 			cell.textLabel.textAlignment = NSTextAlignmentCenter;
 			cell.textLabel.textColor = WAColor(0xC9302C);
 			break;
 		case WARowMedia:
-			cell.textLabel.text = @"View All Media";
+			cell.textLabel.text = WAL(@"View All Media");
 			cell.detailTextLabel.text = _info[@"media"] ? [_info[@"media"] description] : nil;
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 			break;
 		case WARowFavorite:
-			cell.textLabel.text = [WAFavoritesViewController isFavorite:_jid] ? @"Remove from Favorites" : @"Add to Favorites";
+			cell.textLabel.text = [WAFavoritesViewController isFavorite:_jid] ? WAL(@"Remove from Favorites") : WAL(@"Add to Favorites");
 			cell.textLabel.textAlignment = NSTextAlignmentCenter;
 			cell.textLabel.textColor = WAColor(0x385487);
 			break;
 		case WARowBubbles:
-			cell.textLabel.text = @"Chat Bubbles";
-			cell.detailTextLabel.text = WAChatBubble(_jid, YES) || WAChatBubble(_jid, NO) ? @"Custom" : @"Default";
+			cell.textLabel.text = WAL(@"Chat Bubbles");
+			cell.detailTextLabel.text = WAChatBubble(_jid, YES) || WAChatBubble(_jid, NO) ? WAL(@"Custom") : WAL(@"Default");
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 			break;
 		case WARowMute:
-			cell.textLabel.text = _group ? @"Group Notifications" : @"Mute";
+			cell.textLabel.text = _group ? WAL(@"Group Notifications") : WAL(@"Mute");
 			cell.textLabel.adjustsFontSizeToFitWidth = YES;
 			cell.detailTextLabel.text = [self muteText];
 			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -317,9 +317,9 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 
 - (NSString *)muteText {
 	long long until = [_info[@"mutedUntil"] longLongValue];
-	if (until == 0) return _group ? @"On" : @"Off";
-	if (until < 0) return @"Muted";
-	return [NSString stringWithFormat:@"Muted until %@", WAFutureTime(until)];
+	if (until == 0) return _group ? WAL(@"On") : WAL(@"Off");
+	if (until < 0) return WAL(@"Muted");
+	return [NSString stringWithFormat:WAL(@"Muted until %@"), WAFutureTime(until)];
 }
 
 // member row
@@ -341,7 +341,7 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	cell.textLabel.text = p[@"name"];
 	NSString *about = p[@"about"];
 	cell.detailTextLabel.text = [p[@"me"] boolValue] ? nil : (about.length ? about : p[@"phone"]);
-	((UILabel *)cell.accessoryView).text = [p[@"admin"] boolValue] ? @"group admin" : nil;
+	((UILabel *)cell.accessoryView).text = [p[@"admin"] boolValue] ? WAL(@"group admin") : nil;
 	cell.selectionStyle = [p[@"me"] boolValue] ? UITableViewCellSelectionStyleNone : UITableViewCellSelectionStyleBlue;
 	NSString *jid = p[@"jid"];
 	cell.imageView.image = [self thumb:[[WAClient shared] cachedAvatarFor:jid] ?: WAImg(@"EmptyContact")];
@@ -377,10 +377,10 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	switch ([self rowKind:indexPath]) {
 		case WARowPhone: {
 			UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:_info[@"phone"] delegate:self cancelButtonTitle:nil
-				destructiveButtonTitle:nil otherButtonTitles:@"Voice Call", nil];
-			if (WAVideoCallsEnabled()) [sheet addButtonWithTitle:@"Video Call"];
-			[sheet addButtonWithTitle:@"Copy"];
-			sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+				destructiveButtonTitle:nil otherButtonTitles:WAL(@"Voice Call"), nil];
+			if (WAVideoCallsEnabled()) [sheet addButtonWithTitle:WAL(@"Video Call")];
+			[sheet addButtonWithTitle:WAL(@"Copy")];
+			sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 			sheet.tag = 1;
 			[sheet showInView:self.tabBarController.view ?: self.view];
 			break;
@@ -394,9 +394,9 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 			break;
 		case WARowBlock: {
 			BOOL unblock = [_blocked boolValue];
-			NSString *text = unblock ? @"Tap “Unblock” to start receiving messages from contact." : @"Tap “Block” to stop receiving messages from contact.";
-			UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:text delegate:self cancelButtonTitle:@"Cancel"
-				destructiveButtonTitle:unblock ? nil : @"Block" otherButtonTitles:unblock ? @"Unblock" : nil, nil];
+			NSString *text = unblock ? WAL(@"Tap “Unblock” to start receiving messages from contact.") : WAL(@"Tap “Block” to stop receiving messages from contact.");
+			UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:text delegate:self cancelButtonTitle:WAL(@"Cancel")
+				destructiveButtonTitle:unblock ? nil : WAL(@"Block") otherButtonTitles:unblock ? WAL(@"Unblock") : nil, nil];
 			sheet.tag = 3;
 			[sheet showInView:self.tabBarController.view ?: self.view];
 			break;
@@ -410,13 +410,13 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 			break;
 		case WARowMedia:
 			[self.navigationController pushViewController:[[WAMediaViewController alloc] initWithChat:_jid
-				title:@"All Media"] animated:YES];
+				title:WAL(@"All Media")] animated:YES];
 			break;
 		case WARowMute: {
-			UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Select Mute Interval" delegate:self
-				cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:@"8 hours", @"1 week", @"1 year", nil];
-			if ([_info[@"mutedUntil"] longLongValue] != 0) [sheet addButtonWithTitle:@"Unmute"];
-			sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+			UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:WAL(@"Select Mute Interval") delegate:self
+				cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:WAL(@"8 hours"), WAL(@"1 week"), WAL(@"1 year"), nil];
+			if ([_info[@"mutedUntil"] longLongValue] != 0) [sheet addButtonWithTitle:WAL(@"Unmute")];
+			sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 			sheet.tag = 2;
 			[sheet showInView:self.tabBarController.view ?: self.view];
 			break;
@@ -431,9 +431,9 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 			// message / call / info / remove
 			_selected = p;
 			UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:p[@"name"] delegate:self cancelButtonTitle:nil
-				destructiveButtonTitle:nil otherButtonTitles:@"Message", @"Call", @"Info", nil];
-			if ([self amAdmin]) sheet.destructiveButtonIndex = [sheet addButtonWithTitle:[NSString stringWithFormat:@"Remove %@", p[@"name"]]];
-			sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+				destructiveButtonTitle:nil otherButtonTitles:WAL(@"Message"), WAL(@"Call"), WAL(@"Info"), nil];
+			if ([self amAdmin]) sheet.destructiveButtonIndex = [sheet addButtonWithTitle:[NSString stringWithFormat:WAL(@"Remove %@"), p[@"name"]]];
+			sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 			sheet.tag = 4;
 			[sheet showInView:self.tabBarController.view ?: self.view];
 			break;
@@ -451,10 +451,10 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 		return;
 	}
 	if (sheet.tag == 3) {
-		NSString *action = [title isEqualToString:@"Unblock"] ? @"unblock" : @"block";
+		NSString *action = [title isEqualToString:WAL(@"Unblock")] ? @"unblock" : @"block";
 		[[WAClient shared] post:@"/api/blocklist" params:@{@"jid": _jid, @"action": action} completion:^(id json, NSError *error) {
 			if (error) {
-				[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil cancelButtonTitle:@"OK"
+				[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil cancelButtonTitle:WAL(@"OK")
 					otherButtonTitles:nil] show];
 				return;
 			}
@@ -463,17 +463,17 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 		return;
 	}
 	if (sheet.tag == 1) {
-		if ([title isEqualToString:@"Voice Call"]) [[WACall shared] callJID:_jid name:_nameLabel.text];
-		else if ([title isEqualToString:@"Video Call"]) [[WACall shared] callJID:_jid name:_nameLabel.text video:YES];
+		if ([title isEqualToString:WAL(@"Voice Call")]) [[WACall shared] callJID:_jid name:_nameLabel.text];
+		else if ([title isEqualToString:WAL(@"Video Call")]) [[WACall shared] callJID:_jid name:_nameLabel.text video:YES];
 		else [UIPasteboard generalPasteboard].string = _info[@"phone"];
 		return;
 	}
-	NSDictionary *hours = @{@"8 hours": @8, @"1 week": @168, @"1 year": @8760, @"Unmute": @0};
+	NSDictionary *hours = @{WAL(@"8 hours"): @8, WAL(@"1 week"): @168, WAL(@"1 year"): @8760, WAL(@"Unmute"): @0};
 	if (!hours[title]) return;
 	[[WAClient shared] post:@"/api/mute" params:@{@"chat": _jid, @"hours": hours[title]} completion:^(id json, NSError *error) {
 		if (error) {
 			[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil
-				cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			return;
 		}
 		NSMutableDictionary *info = [self->_info mutableCopy];
@@ -492,26 +492,26 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 }
 
 - (void)groupPictureTapped {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:@"Group Icon" delegate:self cancelButtonTitle:nil
-		destructiveButtonTitle:nil otherButtonTitles:@"View", nil];
-	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) [sheet addButtonWithTitle:@"Take Photo"];
-	[sheet addButtonWithTitle:@"Choose Existing Photo"];
-	sheet.destructiveButtonIndex = [sheet addButtonWithTitle:@"Remove photo"];
-	sheet.cancelButtonIndex = [sheet addButtonWithTitle:@"Cancel"];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:WAL(@"Group Icon") delegate:self cancelButtonTitle:nil
+		destructiveButtonTitle:nil otherButtonTitles:WAL(@"View"), nil];
+	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) [sheet addButtonWithTitle:WAL(@"Take Photo")];
+	[sheet addButtonWithTitle:WAL(@"Choose Existing Photo")];
+	sheet.destructiveButtonIndex = [sheet addButtonWithTitle:WAL(@"Remove photo")];
+	sheet.cancelButtonIndex = [sheet addButtonWithTitle:WAL(@"Cancel")];
 	sheet.tag = 5;
 	[sheet showInView:self.tabBarController.view ?: self.view];
 }
 
 - (void)addParticipant {
 	WAPersonPicker *picker = [[WAPersonPicker alloc] init];
-	picker.title = @"Add Participant";
+	picker.title = WAL(@"Add Participant");
 	picker.onPick = ^(NSDictionary *c) {
 		[[WAClient shared] post:@"/api/group/participants" params:@{@"jid": self->_jid, @"add": c[@"jid"]}
 			completion:^(id json, NSError *error) {
 				if (error || ![json[@"ok"] boolValue]) {
 					NSString *msg = error ? error.localizedDescription
-						: [NSString stringWithFormat:@"Failed to add %@ to the group “%@”.", c[@"name"], self->_info[@"name"] ?: self->_name];
-					[[[UIAlertView alloc] initWithTitle:nil message:msg delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+						: [NSString stringWithFormat:WAL(@"Failed to add %@ to the group “%@”."), c[@"name"], self->_info[@"name"] ?: self->_name];
+					[[[UIAlertView alloc] initWithTitle:nil message:msg delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 				}
 				[self load];
 			}];
@@ -535,62 +535,65 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	b.titleLabel.font = [UIFont boldSystemFontOfSize:18];
 	b.titleLabel.shadowOffset = CGSizeMake(0, -1);
 	[b setTitleShadowColor:[UIColor colorWithWhite:0 alpha:0.4] forState:UIControlStateNormal];
-	[b setTitle:@"Delete and Exit Group" forState:UIControlStateNormal];
+	[b setTitle:WAL(@"Delete and Exit Group") forState:UIControlStateNormal];
 	[b addTarget:self action:@selector(exitGroupTapped) forControlEvents:UIControlEventTouchUpInside];
 	[f addSubview:b];
 	return f;
 }
 
 - (void)exitGroupTapped {
-	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:@"Cancel"
-		destructiveButtonTitle:@"Delete and Exit Group" otherButtonTitles:nil];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:WAL(@"Cancel")
+		destructiveButtonTitle:WAL(@"Delete and Exit Group") otherButtonTitles:nil];
 	sheet.tag = 7;
 	[sheet showInView:self.tabBarController.view ?: self.view];
 }
 
 - (void)alertError:(NSError *)error {
-	[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil cancelButtonTitle:@"OK"
+	[[[UIAlertView alloc] initWithTitle:nil message:error.localizedDescription delegate:nil cancelButtonTitle:WAL(@"OK")
 		otherButtonTitles:nil] show];
 }
 
 - (void)groupSheet:(UIActionSheet *)sheet clicked:(NSInteger)index title:(NSString *)title {
 	NSDictionary *p = _selected;
 	if (sheet.tag == 4) {
-		if ([title isEqualToString:@"Message"]) {
+		if ([title isEqualToString:WAL(@"Message")]) {
 			[[NSNotificationCenter defaultCenter] postNotificationName:@"WAOpenChatNotification" object:nil
 				userInfo:@{@"jid": p[@"jid"], @"name": p[@"name"] ?: @""}];
-		} else if ([title isEqualToString:@"Call"]) {
+		} else if ([title isEqualToString:WAL(@"Call")]) {
 			[[WACall shared] callJID:p[@"jid"] name:p[@"name"]];
-		} else if ([title isEqualToString:@"Info"]) {
+		} else if ([title isEqualToString:WAL(@"Info")]) {
 			[self.navigationController pushViewController:[[WAInfoViewController alloc] initWithJID:p[@"jid"] name:p[@"name"] group:NO]
 				animated:YES];
 		} else if (index == sheet.destructiveButtonIndex) {
-			NSString *q = [NSString stringWithFormat:@"Remove %@ from “%@” group?", p[@"name"], _info[@"name"] ?: _name];
-			UIActionSheet *confirm = [[UIActionSheet alloc] initWithTitle:q delegate:self cancelButtonTitle:@"Cancel"
-				destructiveButtonTitle:@"Remove" otherButtonTitles:nil];
+			NSString *q = [NSString stringWithFormat:WAL(@"Remove %@ from “%@” group?"), p[@"name"], _info[@"name"] ?: _name];
+			UIActionSheet *confirm = [[UIActionSheet alloc] initWithTitle:q delegate:self cancelButtonTitle:WAL(@"Cancel")
+				destructiveButtonTitle:WAL(@"Remove") otherButtonTitles:nil];
 			confirm.tag = 6;
 			[confirm showInView:self.tabBarController.view ?: self.view];
 		}
 	} else if (sheet.tag == 6) {
 		[[WAClient shared] post:@"/api/group/participants" params:@{@"jid": _jid, @"remove": p[@"jid"]} completion:^(id json, NSError *error) {
 			if (error || ![json[@"ok"] boolValue]) {
-				[[[UIAlertView alloc] initWithTitle:nil message:@"Failed to remove participant." delegate:nil
-					cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+				[[[UIAlertView alloc] initWithTitle:nil message:WAL(@"Failed to remove participant.") delegate:nil
+					cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 			}
 			[self load];
 		}];
 	} else if (sheet.tag == 5) {
-		if ([title isEqualToString:@"View"]) {
+		if ([title isEqualToString:WAL(@"View")]) {
 			[self showPicture];
 		} else if (index == sheet.destructiveButtonIndex) {
 			[[WAClient shared] post:@"/api/group/photo" params:@{@"jid": _jid} data:[NSData data] contentType:@"image/jpeg"
 				completion:^(id json, NSError *error) {
 					if (error) [self alertError:error];
-					else self->_picture.image = WAImg(@"GroupChat");
+					else {
+						[[WAClient shared] forgetAvatar:self->_jid];
+						self->_picture.image = WAImg(@"GroupChat");
+					}
 				}];
 		} else {
 			UIImagePickerController *picker = [[UIImagePickerController alloc] init];
-			picker.sourceType = [title isEqualToString:@"Take Photo"] ? UIImagePickerControllerSourceTypeCamera
+			picker.sourceType = [title isEqualToString:WAL(@"Take Photo")] ? UIImagePickerControllerSourceTypeCamera
 				: UIImagePickerControllerSourceTypePhotoLibrary;
 			picker.allowsEditing = YES;
 			picker.delegate = self;
@@ -614,7 +617,10 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	[[WAClient shared] post:@"/api/group/photo" params:@{@"jid": _jid} data:UIImageJPEGRepresentation(img, 0.85)
 		contentType:@"image/jpeg" completion:^(id json, NSError *error) {
 			if (error) [self alertError:error];
-			else self->_picture.image = img;
+			else {
+				[[WAClient shared] forgetAvatar:self->_jid];
+				self->_picture.image = img;
+			}
 		}];
 }
 

@@ -12,6 +12,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import "WALocalize.h"
 #include <dlfcn.h>
 #include <notify.h>
 #include <fcntl.h>
@@ -351,12 +352,12 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 			id bar = ((id (*)(id, SEL, CGRect))objc_msgSend)([lockClass alloc], sel_registerName("initForIncomingCallWithFrame:"),
 				CGRectMake(0, 0, w, size.height));
 			SendObject(bar, "setDelegate:", self);
-			SendObject(bar, "setLabel:", @"slide to answer"); // starts empty, set the text ourselves
+			SendObject(bar, "setLabel:", WAL(@"slide to answer")); // starts empty, set the text ourselves
 			[self setBottom:bar];
 			Send(bar, "startAnimating");
 		} else { // no lock bar -> big answer button
 			UIView *bar = [self plainBar];
-			[bar addSubview:[self button:@"bottombargreen" title:@"Answer" frame:CGRectMake(18, 24, w - 36, 47) action:@selector(answer)]];
+			[bar addSubview:[self button:@"bottombargreen" title:WAL(@"Answer") frame:CGRectMake(18, 24, w - 36, 47) action:@selector(answer)]];
 			[self setBottom:bar];
 		}
 	} else {
@@ -371,8 +372,8 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 		} else {
 			UIView *bar = [self plainBar];
 			CGFloat half = floorf((w - 36 - 10) / 2);
-			[bar addSubview:[self button:@"bottombarred" title:@"Decline" frame:CGRectMake(18, 24, half, 47) action:@selector(decline)]];
-			[bar addSubview:[self button:@"bottombargreen" title:@"Answer" frame:CGRectMake(w - 18 - half, 24, half, 47) action:@selector(answer)]];
+			[bar addSubview:[self button:@"bottombarred" title:WAL(@"Decline") frame:CGRectMake(18, 24, half, 47) action:@selector(decline)]];
+			[bar addSubview:[self button:@"bottombargreen" title:WAL(@"Answer") frame:CGRectMake(w - 18 - half, 24, half, 47) action:@selector(answer)]];
 			[self setBottom:bar];
 		}
 	}
@@ -386,7 +387,7 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 	CGFloat colW[3] = {96, 91, 97}, rowH[2] = {107, 115};
 	UIView *grid = [[[UIView alloc] initWithFrame:CGRectMake(0, 0, colW[0] + colW[1] + colW[2], rowH[0] + rowH[1])] autorelease];
 	NSArray *glyphs = [NSArray arrayWithObjects:@"mute", @"dialer", @"speaker", @"addcall", @"hold", @"contacts", nil];
-	NSArray *titles = [NSArray arrayWithObjects:@"mute", @"keypad", @"speaker", @"add call", @"hold", @"contacts", nil];
+	NSArray *titles = [NSArray arrayWithObjects:WAL(@"mute"), WAL(@"keypad"), WAL(@"speaker"), WAL(@"add call"), WAL(@"hold"), WAL(@"contacts"), nil];
 	for (int i = 0; i < 6; i++) {
 		int col = i % 3, row = i / 3;
 		CGFloat x = col == 0 ? 0 : (col == 1 ? colW[0] : colW[0] + colW[1]);
@@ -453,7 +454,7 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 			[self setBottom:bar];
 		} else {
 			UIView *bar = [self plainBar];
-			[bar addSubview:[self button:@"bottombarred" title:@"End" frame:CGRectMake(18, 24, w - 36, 47) action:@selector(hangup)]];
+			[bar addSubview:[self button:@"bottombarred" title:WAL(@"End") frame:CGRectMake(18, 24, w - 36, 47) action:@selector(hangup)]];
 			[self setBottom:bar];
 		}
 		_grid = [self buttonGrid];
@@ -502,7 +503,7 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 		[self hide];
 		return;
 	}
-	[self setLabel:@"call ended"];
+	[self setLabel:WAL(@"call ended")];
 	[_bottom removeFromSuperview];
 	_bottom = nil;
 	_grid.userInteractionEnabled = NO;
@@ -527,8 +528,8 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 	double since = [[_call objectForKey:@"activeSince"] doubleValue];
 	if (since <= 0) {
 		NSString *state = Str(_call, @"state");
-		if ([state isEqualToString:@"calling"]) return [[_call objectForKey:@"callback"] boolValue] ? @"calling back..." : @"calling...";
-		return @"connecting...";
+		if ([state isEqualToString:@"calling"]) return [[_call objectForKey:@"callback"] boolValue] ? WAL(@"calling back...") : WAL(@"calling...");
+		return WAL(@"connecting...");
 	}
 	int secs = (int)([[NSDate date] timeIntervalSince1970] - since);
 	if (secs >= 3600) return [NSString stringWithFormat:@"%d:%02d:%02d", secs / 3600, secs / 60 % 60, secs % 60];
@@ -583,7 +584,7 @@ static void UpdatePosted(CFNotificationCenterRef c, void *observer, CFStringRef 
 		_ownBar.windowLevel = 1100;
 		_ownBar.backgroundColor = [UIColor colorWithRed:0.30 green:0.72 blue:0.25 alpha:1];
 		UILabel *l = [[[UILabel alloc] initWithFrame:_ownBar.bounds] autorelease];
-		l.text = @"Touch to return to call";
+		l.text = WAL(@"Touch to return to call");
 		l.font = [UIFont boldSystemFontOfSize:13];
 		l.textColor = [UIColor whiteColor];
 		l.backgroundColor = [UIColor clearColor];

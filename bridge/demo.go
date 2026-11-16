@@ -51,6 +51,17 @@ func runDemo(listen string) {
 	})
 	j("/api/chats", func(*http.Request) any { return map[string]any{"chats": d.chats(), "upd": d.seq} })
 	j("/api/calls", func(*http.Request) any { return map[string]any{"calls": d.callLog()} })
+	j("/api/statuses", func(*http.Request) any { return map[string]any{"people": d.statusLog()} })
+	j("/api/statuses/seen", ok)
+	mux.HandleFunc("/api/statuses/media", func(w http.ResponseWriter, r *http.Request) {
+		file := "demo/photo-sunset.jpg"
+		if r.URL.Query().Get("format") == "thumb" {
+			file = "demo/photo-sunset-thumb.jpg"
+		}
+		data, _ := demoFiles.ReadFile(file)
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write(data)
+	})
 	j("/api/messages", func(r *http.Request) any {
 		if r.URL.Query().Get("before") != "" && r.URL.Query().Get("before") != "0" {
 			return map[string]any{"messages": []Message{}}
@@ -371,6 +382,26 @@ func (d *demoServer) build() {
 
 	add(liam, liam, day(6, 10, 0), "text", "Happy birthday! 🎈 Have a great day", seen, 0)
 	add(liam, "", day(6, 10, 12), "text", "Thank you so much!", read, 0)
+}
+
+// statusLog: made up status updates, seq 1 is the only photo
+func (d *demoServer) statusLog() []StatusPerson {
+	now := time.Now().Unix()
+	item := func(seq int64, ago int64, kind, text string, bg uint32, viewed bool) StatusItem {
+		return StatusItem{Seq: seq, ID: "demostatus" + strconv.FormatInt(seq, 10), TS: now - ago, Kind: kind, Text: text, BG: bg, Viewed: viewed}
+	}
+	return []StatusPerson{
+		{JID: "15550103@s.whatsapp.net", Name: "Olivia Brown", Items: []StatusItem{
+			item(1, 3*3600, "image", "Golden hour 🌅", 0, false),
+			item(2, 25*60, "text", "Best day at the lake!", 0xFF8E44AD, false),
+		}},
+		{JID: "15550102@s.whatsapp.net", Name: "Jake Miller", Items: []StatusItem{
+			item(3, 2*3600, "text", "Game night tonight, who's in? 🎲", 0xFF27AE60, false),
+		}},
+		{JID: "15550105@s.whatsapp.net", Name: "Sophie Martin", Items: []StatusItem{
+			item(4, 9*3600, "text", "Coffee first ☕", 0xFFD35400, true),
+		}},
+	}
 }
 
 // callLog: made up calls tab, not in the chats so old screenshots stay the same.

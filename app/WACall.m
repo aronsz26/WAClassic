@@ -565,7 +565,7 @@ static void RingSoundFinished(SystemSoundID sound, void *ref) {
 		[self cancelRingNote];
 		UILocalNotification *n = [[UILocalNotification alloc] init];
 		n.alertBody = [NSString stringWithFormat:WAVideoCallsEnabled() && [info[@"video"] boolValue] ? @"%@: Missed video call" : @"%@: Missed voice call", name];
-		n.alertAction = @"View";
+		n.alertAction = WAL(@"View");
 		n.soundName = [self bundleSound:@"Tri-tone.caf"];
 		n.userInfo = @{@"chat": info[@"peer"] ?: @""};
 		[app presentLocalNotificationNow:n];

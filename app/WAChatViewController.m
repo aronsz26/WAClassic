@@ -441,6 +441,7 @@ static NSString *DayKey(long long ts) {
 	NSNumber *_loadingVideo;
 	NSMutableSet *_loadingImages;
 	NSMutableSet *_loadingAnimatedStickers;
+	NSMutableSet *_failedAnimatedStickers;
 	NSMutableSet *_missingStickerThumbs;
 	NSInteger _tempID;
 
@@ -489,6 +490,7 @@ static NSString *DayKey(long long ts) {
 		_animatedStickers.countLimit = 8;
 		_loadingImages = [NSMutableSet set];
 		_loadingAnimatedStickers = [NSMutableSet set];
+		_failedAnimatedStickers = [NSMutableSet set];
 		_missingStickerThumbs = [NSMutableSet set];
 		_voiceData = [[NSCache alloc] init];
 		_pending = [NSMutableArray array];
@@ -1330,7 +1332,6 @@ static NSString *DayKey(long long ts) {
 			NSNumber *seq = m[@"seq"];
 			NSData *gifData = [m[@"animated"] boolValue] ? [_animatedStickers objectForKey:seq] : nil;
 			if (gifData) [cell.photo setGIFData:gifData];
-			else if ([m[@"animated"] boolValue]) [self requestStickerAnimationFor:m];
 			cell.photo.contentMode = UIViewContentModeScaleAspectFit;
 			cell.photo.clipsToBounds = NO;
 			cell.photo.layer.cornerRadius = 0;
@@ -2087,6 +2088,10 @@ static NSString *DayKey(long long ts) {
 - (UIImage *)imageFor:(NSDictionary *)m {
 	NSNumber *seq = m[@"seq"];
 	if (IsSticker(m) && [_missingStickerThumbs containsObject:seq]) return nil;
+	if (IsSticker(m) && [m[@"animated"] boolValue] && ![_failedAnimatedStickers containsObject:seq]) {
+		[self requestStickerAnimationFor:m];
+		return nil;
+	}
 	id cached = [_images objectForKey:seq];
 	UIImage *img = [cached isKindOfClass:[UIImage class]] ? cached : nil;
 	if (img || [_loadingImages containsObject:seq] || [seq longLongValue] <= 0) return img;
@@ -2115,16 +2120,25 @@ static NSString *DayKey(long long ts) {
 
 - (void)requestStickerAnimationFor:(NSDictionary *)m {
 	NSNumber *seq = m[@"seq"];
-	if (!seq || [_animatedStickers objectForKey:seq] || [_loadingAnimatedStickers containsObject:seq]) return;
+	if (!seq || [_animatedStickers objectForKey:seq] || [_loadingAnimatedStickers containsObject:seq] ||
+		[_failedAnimatedStickers containsObject:seq]) return;
 	[_loadingAnimatedStickers addObject:seq];
 	NSURLRequest *request = [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:@"animated"];
 	[[WAClient shared] load:request completion:^(NSData *data, NSInteger code, NSError *error) {
 		[self->_loadingAnimatedStickers removeObject:seq];
-		if (code != 200 || !data.length) return;
+		if (code != 200 || !data.length) {
+			[self->_failedAnimatedStickers addObject:seq];
+			[self reloadSeq:seq];
+			return;
+		}
 		CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
 		NSUInteger frames = source ? CGImageSourceGetCount(source) : 0;
 		if (source) CFRelease(source);
-		if (frames < 2) return;
+		if (frames < 2) {
+			[self->_failedAnimatedStickers addObject:seq];
+			[self reloadSeq:seq];
+			return;
+		}
 		[self->_animatedStickers setObject:data forKey:seq cost:data.length];
 		[self reloadSeq:seq];
 	}];

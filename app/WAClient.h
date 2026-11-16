@@ -55,6 +55,11 @@ typedef void (^WAJSONBlock)(id json, NSError *error);
 // set online (whatsapp only sends presence while we're online)
 - (void)setOnline:(BOOL)online;
 
+// Recent message snapshots are kept in memory so reopening a chat paints immediately.
+- (NSArray *)cachedMessagesForChat:(NSString *)jid;
+- (NSArray *)storeMessages:(NSArray *)messages forChat:(NSString *)jid;
+- (NSArray *)mergeMessages:(NSArray *)messages forChat:(NSString *)jid;
+
 // long poll after upd
 - (void)startUpdatesFrom:(long long)upd;
 - (void)stopUpdates;

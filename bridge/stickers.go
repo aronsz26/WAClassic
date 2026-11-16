@@ -15,7 +15,7 @@ import (
 	imagedraw "golang.org/x/image/draw"
 )
 
-const stickerThumbnailMaxSide = 96
+const stickerThumbnailMaxSide = 70
 
 const stickerDownloadMaxSize = 4 << 20
 
@@ -35,7 +35,7 @@ func mediaThumbnail(msg *waE2E.Message) ([]byte, string) {
 }
 
 // smallStickerThumbnail keeps the transparent embedded PNG small for the
-// phone's 128-point sticker view. Returning nil for invalid data lets the app
+// phone's 70-pixel sticker preview. Returning nil for invalid data lets the app
 // show its lightweight placeholder instead of fetching the original sticker.
 func smallStickerThumbnail(data []byte) []byte {
 	if len(data) == 0 {
@@ -104,7 +104,7 @@ func (b *Bridge) stickerThumbnail(ctx context.Context, seq int64, sticker *waE2E
 		return nil, fmt.Errorf("extract sticker frame: %w", err)
 	}
 	data, err := ffmpeg(ctx, frame, "sticker.webp", "preview.png",
-		"-vf", "scale=96:96:force_original_aspect_ratio=decrease,format=rgba",
+		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,format=rgba", stickerThumbnailMaxSide, stickerThumbnailMaxSide),
 		"-frames:v", "1", "-c:v", "png", "-f", "image2")
 	if err != nil {
 		return nil, fmt.Errorf("render sticker preview: %w", err)

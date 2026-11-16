@@ -1073,6 +1073,16 @@ static NSString *DayKey(long long ts) {
 	if (IsSticker(m)) return CGSizeMake(kStickerWidth, kStickerHeight);
 	CGFloat width = [m[@"mediaWidth"] floatValue];
 	CGFloat height = [m[@"mediaHeight"] floatValue];
+	// WhatsApp's embedded thumbnail can have a different aspect ratio from
+	// the original media. Size the bubble for the image currently displayed.
+	id cached = [_images objectForKey:m[@"seq"]];
+	if ([cached isKindOfClass:[UIImage class]]) {
+		CGSize displayedSize = [(UIImage *)cached size];
+		if (displayedSize.width > 0 && displayedSize.height > 0) {
+			width = displayedSize.width;
+			height = displayedSize.height;
+		}
+	}
 	if (width <= 0 || height <= 0) return CGSizeMake(kImageWidth, kImageHeight);
 	CGFloat scale = MIN(1, MIN(kImageWidth / width, kImageMaxHeight / height));
 	return CGSizeMake(MAX(1, floorf(width * scale)), MAX(1, floorf(height * scale)));

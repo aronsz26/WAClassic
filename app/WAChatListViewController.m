@@ -257,6 +257,12 @@
 		[refresh addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
 		self.refreshControl = refresh;
 	}
+	// iOS 4 does not have UITableViewRowAction. Offer archive beside delete
+	// through the same left-swipe gesture on every supported iOS version.
+	UISwipeGestureRecognizer *archiveSwipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(chatSwiped:)];
+	archiveSwipe.direction = UISwipeGestureRecognizerDirectionLeft;
+	archiveSwipe.cancelsTouchesInView = NO;
+	[self.tableView addGestureRecognizer:archiveSwipe];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updatesArrived:)
 		name:WAClientUpdatesNotification object:nil];
 	// back online / other address: try again by itself
@@ -376,6 +382,23 @@
 	return UITableViewCellEditingStyleDelete;
 }
 
+- (void)chatSwiped:(UISwipeGestureRecognizer *)gesture {
+	if (gesture.state != UIGestureRecognizerStateRecognized || self.editing) return;
+	CGPoint point = [gesture locationInView:self.tableView];
+	NSIndexPath *path = [self.tableView indexPathForRowAtPoint:point];
+	NSDictionary *chat = path ? [self chatAtIndexPath:path] : nil;
+	if (!chat) return;
+	_deleting = chat;
+	BOOL unarchive = _archivedOnly;
+	NSString *action = WAL(unarchive ? @"Unarchive" : @"Archive");
+	NSString *title = [NSString stringWithFormat:WAL(@"%@ “%@”?"), action, chat[@"name"] ?: @""];
+	UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:title delegate:self cancelButtonTitle:WAL(@"Cancel")
+		destructiveButtonTitle:WAL(@"Delete") otherButtonTitles:action, nil];
+	sheet.tag = 8;
+	sheet.destructiveButtonIndex = 0;
+	[sheet showInView:self.tabBarController.view ?: self.view];
+}
+
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (style != UITableViewCellEditingStyleDelete) return;
 	_deleting = [self chatAtIndexPath:indexPath];
@@ -398,6 +421,20 @@
 }
 
 - (void)actionSheet:(UIActionSheet *)sheet clickedButtonAtIndex:(NSInteger)index {
+	if (sheet.tag == 8) {
+		if (index == sheet.cancelButtonIndex) return;
+		if (index == sheet.destructiveButtonIndex) {
+			[self askHowToDelete:[NSString stringWithFormat:WAL(@"Delete All Chat History with “%@”"), _deleting[@"name"]]];
+			return;
+		}
+		NSDictionary *chat = _deleting;
+		BOOL archived = !_archivedOnly;
+		[[WAClient shared] post:@"/api/chat/archive" params:@{@"chat": chat[@"jid"], @"archived": archived ? @"1" : @"0"} completion:^(id json, NSError *error) {
+			if (error) [[[UIAlertView alloc] initWithTitle:WAL(@"Could not update chat") message:error.localizedDescription delegate:nil cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
+			[self reload];
+		}];
+		return;
+	}
 	if (sheet.tag != 7) return;
 	if (index == sheet.cancelButtonIndex) {
 		[self.tableView setEditing:self.editing animated:YES];

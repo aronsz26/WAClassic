@@ -25,8 +25,13 @@ func (b *Bridge) syncArchiveOnce() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		if err := b.cli.FetchAppState(ctx, appstate.WAPatchRegularLow, true, false); err != nil {
-			log.Printf("archive sync: %v, next connect tries again", err) // keys may not be there yet right after pairing
-			return
+			// A stale local LTHash makes every delta fail. FetchAppState cannot repair
+			// that version; request the authoritative snapshot from the primary phone.
+			log.Printf("archive sync: %v, requesting fresh state from phone", err)
+			if err = b.recoverAppState(ctx, appstate.WAPatchRegularLow); err != nil {
+				log.Printf("archive sync recovery: %v, next connect tries again", err)
+				return
+			}
 		}
 		os.WriteFile(mark, nil, 0600)
 		log.Printf("archive sync done")

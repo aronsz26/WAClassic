@@ -67,8 +67,15 @@ func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID strin
 	var raw []byte
 	if seq > 0 {
 		stored, raw, err = b.store.MessageBySeq(seq)
-	} else {
+		if err == nil && messageID != "" && stored.ID != messageID {
+			err = errors.New("stale message sequence")
+		}
+	}
+	if err != nil && messageID != "" {
 		stored, raw, err = b.store.MessageByID(source.String(), messageID)
+		if err != nil {
+			stored, raw, err = b.store.MessageByIDAnyChat(messageID)
+		}
 	}
 	if err != nil {
 		return nil, errMessageNotFound

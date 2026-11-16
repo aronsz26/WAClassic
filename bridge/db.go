@@ -517,3 +517,19 @@ func (s *Store) MessageBySeq(seq int64) (*Message, []byte, error) {
 	}
 	return &m, raw, nil
 }
+
+// MessageByIDAnyChat resolves a unique WhatsApp message ID when a cached chat JID is stale.
+func (s *Store) MessageByIDAnyChat(id string) (*Message, []byte, error) {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE id = ?`, id).Scan(&count); err != nil {
+		return nil, nil, err
+	}
+	if count != 1 {
+		return nil, nil, sql.ErrNoRows
+	}
+	var chat string
+	if err := s.db.QueryRow(`SELECT chat FROM messages WHERE id = ?`, id).Scan(&chat); err != nil {
+		return nil, nil, err
+	}
+	return s.MessageByID(chat, id)
+}

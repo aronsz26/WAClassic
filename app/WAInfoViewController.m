@@ -586,7 +586,10 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 			[[WAClient shared] post:@"/api/group/photo" params:@{@"jid": _jid} data:[NSData data] contentType:@"image/jpeg"
 				completion:^(id json, NSError *error) {
 					if (error) [self alertError:error];
-					else self->_picture.image = WAImg(@"GroupChat");
+					else {
+						[[WAClient shared] forgetAvatar:self->_jid];
+						self->_picture.image = WAImg(@"GroupChat");
+					}
 				}];
 		} else {
 			UIImagePickerController *picker = [[UIImagePickerController alloc] init];
@@ -614,7 +617,10 @@ typedef NS_ENUM(NSInteger, WARow) { WARowPhone, WARowTopic, WARowMedia, WARowMut
 	[[WAClient shared] post:@"/api/group/photo" params:@{@"jid": _jid} data:UIImageJPEGRepresentation(img, 0.85)
 		contentType:@"image/jpeg" completion:^(id json, NSError *error) {
 			if (error) [self alertError:error];
-			else self->_picture.image = img;
+			else {
+				[[WAClient shared] forgetAvatar:self->_jid];
+				self->_picture.image = img;
+			}
 		}];
 }
 

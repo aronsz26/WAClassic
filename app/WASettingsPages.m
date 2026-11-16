@@ -674,6 +674,7 @@ static NSString *OwnWallpaperPath(void) {
 	[[WAClient shared] post:@"/api/me/photo" params:nil data:jpeg contentType:@"image/jpeg" completion:^(id json, NSError *error) {
 		[UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
 		if (error) [self alert:WAL(@"Sorry, could not update your profile photo.")];
+		else [[WAClient shared] forgetAvatar:self->_me[@"jid"]];
 		[self loadPhoto];
 	}];
 }

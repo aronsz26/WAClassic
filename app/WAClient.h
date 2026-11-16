@@ -43,7 +43,7 @@ typedef void (^WAJSONBlock)(id json, NSError *error);
 - (void)post:(NSString *)path params:(NSDictionary *)params data:(NSData *)body contentType:(NSString *)type
 	completion:(WAJSONBlock)completion;
 - (NSURLRequest *)mediaRequestForSeq:(long long)seq;
-- (NSURLRequest *)mediaRequestForSeq:(long long)seq format:(NSString *)format; // mp4 / poster / m4a
+- (NSURLRequest *)mediaRequestForSeq:(long long)seq format:(NSString *)format; // thumb / mp4 / poster / m4a
 - (NSURLRequest *)voiceRequestForSeq:(long long)seq;
 - (NSURLRequest *)videoRequestForSeq:(long long)seq optimized:(BOOL)small; // small = optimize video
 

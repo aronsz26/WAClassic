@@ -41,14 +41,19 @@ var errMessageNotFound = errors.New("message not found")
 
 func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID, targetChat string) (*Message, error) {
 	source, err := types.ParseJID(sourceChat)
-	if err != nil || (source.Server != types.DefaultUserServer && source.Server != types.LegacyUserServer && source.Server != types.GroupServer) {
+	if err != nil || (source.Server != types.DefaultUserServer && source.Server != types.LegacyUserServer && source.Server != types.HiddenUserServer && source.Server != types.GroupServer) {
 		return nil, errors.New("invalid source chat")
 	}
 	target, err := types.ParseJID(targetChat)
-	if err != nil || (target.Server != types.DefaultUserServer && target.Server != types.LegacyUserServer && target.Server != types.GroupServer) {
+	if err != nil || (target.Server != types.DefaultUserServer && target.Server != types.LegacyUserServer && target.Server != types.HiddenUserServer && target.Server != types.GroupServer) {
 		return nil, errors.New("invalid destination chat")
 	}
-	stored, raw, err := b.store.MessageByID(source.ToNonAD().String(), messageID)
+	// The app can hold an LID JID while the bridge stores the same conversation
+	// under its phone-number JID. Resolve both sides with the same mapping used
+	// when messages are stored before looking up the source row.
+	source = b.chatKey(ctx, source).ToNonAD()
+	target = b.chatKey(ctx, target).ToNonAD()
+	stored, raw, err := b.store.MessageByID(source.String(), messageID)
 	if err != nil {
 		return nil, errMessageNotFound
 	}
@@ -70,7 +75,7 @@ func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID, targ
 		return nil, errCannotForward
 	}
 
-	resp, err := b.cli.SendMessage(ctx, target.ToNonAD(), forwarded)
+	resp, err := b.cli.SendMessage(ctx, target, forwarded)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +87,7 @@ func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID, targ
 		}
 	}
 	sent := &Message{
-		ID: resp.ID, Chat: target.ToNonAD().String(), Sender: b.ownJID().String(), FromMe: true,
+		ID: resp.ID, Chat: target.String(), Sender: b.ownJID().String(), FromMe: true,
 		TS: unix(resp.Timestamp), Kind: stored.Kind, Text: stored.Text, Status: statusSent, Secs: stored.Secs,
 	}
 	if _, err := b.store.AddMessage(sent, forwardedRaw, false); err != nil {

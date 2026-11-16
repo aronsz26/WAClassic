@@ -5,6 +5,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/polymorfa/hypermeow/proto/waE2E"
+	"google.golang.org/protobuf/proto"
 )
 
 // Message is a row as the app sees it.
@@ -20,6 +23,7 @@ type Message struct {
 	FromMe   bool   `json:"fromMe"`
 	TS       int64  `json:"ts"`
 	Kind     string `json:"kind"`
+	Animated bool   `json:"animated,omitempty"`
 	Text     string `json:"text"`
 	Status   int    `json:"status"`
 	Secs     int    `json:"secs,omitempty"`
@@ -84,6 +88,7 @@ CREATE TABLE IF NOT EXISTS messages (
 	from_me INTEGER NOT NULL,
 	ts      INTEGER NOT NULL,
 	kind    TEXT NOT NULL,
+	animated INTEGER NOT NULL DEFAULT 0,
 	text    TEXT NOT NULL,
 	status  INTEGER NOT NULL,
 	raw     BLOB,
@@ -108,6 +113,9 @@ CREATE TABLE IF NOT EXISTS chats (
 	last_ts INTEGER NOT NULL DEFAULT 0,
 	unread  INTEGER NOT NULL DEFAULT 0,
 	upd     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS bridge_migrations (
+	name TEXT PRIMARY KEY
 );
 `
 
@@ -134,11 +142,36 @@ func openStore(db *sql.DB) (*Store, error) {
 	db.Exec(statusMigrate)
 	// voice message length (fails if the column exists, fine)
 	db.Exec(`ALTER TABLE messages ADD COLUMN secs INTEGER NOT NULL DEFAULT 0`)
+	// Animated sticker marker, retained alongside the original message proto.
+	db.Exec(`ALTER TABLE messages ADD COLUMN animated INTEGER NOT NULL DEFAULT 0`)
 	// stored time, so bg poll can tell new from changed
 	db.Exec(`ALTER TABLE messages ADD COLUMN created INTEGER NOT NULL DEFAULT 0`)
 	// replies
 	for _, col := range []string{"quote_id", "quote_sender", "quote_kind", "quote_text"} {
 		db.Exec(`ALTER TABLE messages ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	// Backfill stickers stored by earlier bridge versions once so they can use
+	// the animated endpoint without rescanning static stickers on each startup.
+	var stickerAnimationBackfilled int
+	db.QueryRow(`SELECT 1 FROM bridge_migrations WHERE name = 'sticker_animation'`).Scan(&stickerAnimationBackfilled)
+	if stickerAnimationBackfilled == 0 {
+		rows, err := db.Query(`SELECT seq, raw FROM messages WHERE kind = 'sticker'`)
+		if err == nil {
+			var animatedSeqs []int64
+			for rows.Next() {
+				var seq int64
+				var raw []byte
+				var msg waE2E.Message
+				if rows.Scan(&seq, &raw) == nil && proto.Unmarshal(raw, &msg) == nil && msg.GetStickerMessage().GetIsAnimated() {
+					animatedSeqs = append(animatedSeqs, seq)
+				}
+			}
+			rows.Close()
+			for _, seq := range animatedSeqs {
+				db.Exec(`UPDATE messages SET animated = 1 WHERE seq = ?`, seq)
+			}
+			db.Exec(`INSERT OR IGNORE INTO bridge_migrations(name) VALUES ('sticker_animation')`)
+		}
 	}
 	db.Exec(`ALTER TABLE chats ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
 	s := &Store{db: db, wake: make(chan struct{})}
@@ -174,9 +207,9 @@ func (s *Store) AddMessage(m *Message, raw []byte, countUnread bool) (bool, erro
 	if m.Quote != nil {
 		q = *m.Quote
 	}
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO messages (id, chat, sender, from_me, ts, kind, text, status, raw, upd, secs, created,
-		quote_id, quote_sender, quote_kind, quote_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.Chat, m.Sender, m.FromMe, m.TS, m.Kind, m.Text, m.Status, raw, m.Upd, m.Secs, m.Created,
+	res, err := s.db.Exec(`INSERT OR IGNORE INTO messages (id, chat, sender, from_me, ts, kind, animated, text, status, raw, upd, secs, created,
+		quote_id, quote_sender, quote_kind, quote_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.ID, m.Chat, m.Sender, m.FromMe, m.TS, m.Kind, m.Animated, m.Text, m.Status, raw, m.Upd, m.Secs, m.Created,
 		q.ID, q.Sender, q.Kind, q.Text)
 	if err != nil {
 		return false, err
@@ -265,7 +298,7 @@ func (s *Store) ChatName(jid string) string {
 	return name
 }
 
-const msgCols = `seq, id, chat, sender, from_me, ts, kind, text, status, upd, secs, created,
+const msgCols = `seq, id, chat, sender, from_me, ts, kind, animated, text, status, upd, secs, created,
 	quote_id, quote_sender, quote_kind, quote_text`
 
 func scanMessages(rows *sql.Rows) ([]Message, error) {
@@ -274,7 +307,7 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 	for rows.Next() {
 		var m Message
 		var q Quote
-		if err := rows.Scan(&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Text, &m.Status, &m.Upd, &m.Secs,
+		if err := rows.Scan(&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Animated, &m.Text, &m.Status, &m.Upd, &m.Secs,
 			&m.Created, &q.ID, &q.Sender, &q.Kind, &q.Text); err != nil {
 			return nil, err
 		}
@@ -490,7 +523,7 @@ func (s *Store) MessageByID(chat, id string) (*Message, []byte, error) {
 	var raw []byte
 	var q Quote
 	err := s.db.QueryRow(`SELECT `+msgCols+`, raw FROM messages WHERE chat = ? AND id = ?`, chat, id).Scan(
-		&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Text, &m.Status, &m.Upd, &m.Secs, &m.Created,
+		&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Animated, &m.Text, &m.Status, &m.Upd, &m.Secs, &m.Created,
 		&q.ID, &q.Sender, &q.Kind, &q.Text, &raw)
 	if err != nil {
 		return nil, nil, err

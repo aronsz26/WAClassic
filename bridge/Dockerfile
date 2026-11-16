@@ -9,7 +9,7 @@ COPY . .
 RUN ./patches/prepare.sh && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w -X main.version=${BRIDGE_VERSION#v}" -o /wa4s-bridge .
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg webp ca-certificates tzdata \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd -u 1000 -m wa4s && mkdir /data && chown wa4s:wa4s /data && chmod 700 /data
 COPY --from=build /wa4s-bridge /usr/local/bin/wa4s-bridge

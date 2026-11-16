@@ -498,16 +498,40 @@ func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw
 		return
 	}
 	if r.URL.Query().Get("format") == "thumb" { // thumbnail for all media
-		thumb := msg.GetImageMessage().GetJPEGThumbnail()
-		if thumb == nil {
-			thumb = msg.GetVideoMessage().GetJPEGThumbnail()
+		var thumb []byte
+		var thumbMIME string
+		if sticker := msg.GetStickerMessage(); sticker != nil {
+			var err error
+			thumb, err = b.stickerThumbnail(r.Context(), seq, sticker)
+			thumbMIME = "image/png"
+			if err != nil {
+				httpErr(w, err, http.StatusBadGateway)
+				return
+			}
+		} else {
+			thumb, thumbMIME = mediaThumbnail(&msg)
 		}
-		if thumb == nil {
+		if len(thumb) == 0 {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Type", thumbMIME)
 		w.Write(thumb)
+		return
+	}
+	if r.URL.Query().Get("format") == "animated" {
+		sticker := msg.GetStickerMessage()
+		if sticker == nil || !sticker.GetIsAnimated() {
+			http.NotFound(w, r)
+			return
+		}
+		data, err := b.stickerAnimation(r.Context(), seq, sticker)
+		if err != nil {
+			httpErr(w, err, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "image/gif")
+		w.Write(data)
 		return
 	}
 	if format := r.URL.Query().Get("format"); format == "mp4" || format == "poster" {

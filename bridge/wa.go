@@ -117,17 +117,19 @@ func (b *Bridge) onMessage(e *events.Message, live bool) {
 		return // receipts, reactions, motion photo copies etc
 	}
 	sender := b.chatKey(ctx, e.Info.Sender)
+	sticker := e.Message.GetStickerMessage()
 	m := &Message{
-		ID:     id,
-		Chat:   chat.String(),
-		Sender: sender.String(),
-		FromMe: e.Info.IsFromMe,
-		TS:     unix(e.Info.Timestamp),
-		Kind:   kind,
-		Text:   text,
-		Status: statusDelivered,
-		Secs:   mediaSeconds(e.Message),
-		Quote:  b.quoteOf(ctx, chat, e.Message),
+		ID:       id,
+		Chat:     chat.String(),
+		Sender:   sender.String(),
+		FromMe:   e.Info.IsFromMe,
+		TS:       unix(e.Info.Timestamp),
+		Kind:     kind,
+		Animated: sticker != nil && sticker.GetIsAnimated(),
+		Text:     text,
+		Status:   statusDelivered,
+		Secs:     mediaSeconds(e.Message),
+		Quote:    b.quoteOf(ctx, chat, e.Message),
 	}
 	if m.FromMe {
 		m.Status = statusSent

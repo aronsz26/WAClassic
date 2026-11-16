@@ -21,7 +21,9 @@ static void RegisterDefaults(void) {
 	dispatch_once(&once, ^{
 		// migrate old auto-download switch
 		id old = [[NSUserDefaults standardUserDefaults] objectForKey:WAPrefAutoDownload];
-		NSString *photos = old && ![old boolValue] ? @"never" : @"all";
+		// Default incoming photos to Wi-Fi only; cellular shows the compact
+		// embedded preview until the user opens the image.
+		NSString *photos = old && ![old boolValue] ? @"never" : @"wifi";
 		[[NSUserDefaults standardUserDefaults] registerDefaults:@{
 			WAPrefAutoPhotos: photos, WAPrefAutoAudio: @"wifi", WAPrefAutoVideos: @"never", WAPrefOptimizeVideo: @"cellular",
 			WAPrefBubbleOut: @"Green", WAPrefBubbleIn: @"White",
@@ -109,9 +111,9 @@ BOOL WAAutoDownload(NSString *key) {
 }
 
 BOOL WAOptimizeVideoNow(void) {
-	NSString *v = WAPrefString(WAPrefOptimizeVideo);
-	if ([v isEqualToString:@"always"]) return YES;
-	return [v isEqualToString:@"cellular"] && !WAOnWiFi();
+	// Media policy is fixed to the user's requirement: original quality on Wi-Fi,
+	// optimized transfer on cellular, regardless of legacy video preference.
+	return !WAOnWiFi();
 }
 
 NSString *WAChatBubble(NSString *jid, BOOL mine) {

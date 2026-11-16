@@ -94,6 +94,14 @@ func resizeJPEG(data []byte, maxSide, quality int) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+func compactMediaThumbnail(data []byte, maxSide, quality int) ([]byte, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || max(cfg.Width, cfg.Height) <= maxSide {
+		return data, nil
+	}
+	return resizeJPEG(data, maxSide, quality)
+}
+
 func (b *Bridge) imageFile(ctx context.Context, seq int64, dl whatsmeow.DownloadableMessage, optimized bool) ([]byte, error) {
 	name := fmt.Sprintf("%d.original", seq)
 	if optimized {
@@ -309,6 +317,8 @@ func (b *Bridge) sendImage(ctx context.Context, chatStr string, data []byte, cap
 		Kind:   "image",
 		Text:   caption,
 		Status: statusSent,
+		MediaWidth: size.X,
+		MediaHeight: size.Y,
 		Quote:  quote,
 	}
 	if _, err := b.store.AddMessage(m, raw, false); err != nil {

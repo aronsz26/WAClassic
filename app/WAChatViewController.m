@@ -15,6 +15,7 @@
 // 2.10 layout: GreenBubbleOut/GrayBubbleIn, time pill next to bubble, input bar at the bottom
 static const CGFloat kMaxTextWidth = 200;
 static const CGFloat kImageWidth = 200, kImageHeight = 150;
+static const CGFloat kImageMaxHeight = 240;
 static const CGFloat kStickerWidth = 128, kStickerHeight = 128;
 static const CGFloat kVoiceWidth = 196, kVoiceHeight = 42;
 static const CGFloat kBarHeight = 40;
@@ -1068,6 +1069,15 @@ static NSString *DayKey(long long ts) {
 	return _group && ![m[@"fromMe"] boolValue] && [m[@"name"] length] > 0;
 }
 
+- (CGSize)mediaSizeForMessage:(NSDictionary *)m {
+	if (IsSticker(m)) return CGSizeMake(kStickerWidth, kStickerHeight);
+	CGFloat width = [m[@"mediaWidth"] floatValue];
+	CGFloat height = [m[@"mediaHeight"] floatValue];
+	if (width <= 0 || height <= 0) return CGSizeMake(kImageWidth, kImageHeight);
+	CGFloat scale = MIN(1, MIN(kImageWidth / width, kImageMaxHeight / height));
+	return CGSizeMake(MAX(1, floorf(width * scale)), MAX(1, floorf(height * scale)));
+}
+
 // content size without bubble margins
 - (CGSize)contentSizeFor:(NSDictionary *)m textSize:(CGSize *)textSizeOut {
 	NSString *body = BodyText(m);
@@ -1091,8 +1101,9 @@ static NSString *DayKey(long long ts) {
 		h += kQuoteHeight + 4;
 	}
 	if (IsMedia(m)) {
-		w = MAX(w, IsSticker(m) ? kStickerWidth : kImageWidth);
-		h += (IsSticker(m) ? kStickerHeight : kImageHeight) + (text.height ? 4 : 0);
+		CGSize mediaSize = [self mediaSizeForMessage:m];
+		w = MAX(w, mediaSize.width);
+		h += mediaSize.height + (text.height ? 4 : 0);
 	}
 	if (IsVoice(m)) {
 		w = MAX(w, kVoiceWidth);
@@ -1210,8 +1221,8 @@ static NSString *DayKey(long long ts) {
 	}
 	if (IsMedia(m)) {
 		cell.photo.hidden = NO;
-		CGFloat mediaHeight = sticker ? kStickerHeight : kImageHeight;
-		cell.photo.frame = CGRectMake(x - 3, y, contentW + 6, mediaHeight);
+		CGSize mediaSize = [self mediaSizeForMessage:m];
+		cell.photo.frame = CGRectMake(x - 3, y, mediaSize.width + 6, mediaSize.height);
 		cell.photo.image = [self imageFor:m];
 		if (sticker) {
 			cell.photo.contentMode = UIViewContentModeScaleAspectFit;
@@ -1226,7 +1237,7 @@ static NSString *DayKey(long long ts) {
 				cell.bodyLabel.frame = cell.photo.frame;
 			}
 		} else {
-			cell.photo.contentMode = UIViewContentModeScaleAspectFill;
+			cell.photo.contentMode = UIViewContentModeScaleAspectFit;
 			cell.photo.clipsToBounds = YES;
 			cell.photo.layer.cornerRadius = 5;
 			cell.photo.backgroundColor = [UIColor colorWithWhite:0.85 alpha:1];
@@ -1243,7 +1254,7 @@ static NSString *DayKey(long long ts) {
 			cell.videoLabel.frame = CGRectMake(p.origin.x + 6, CGRectGetMaxY(p) - 17, p.size.width - 12, 16);
 			cell.videoLabel.textAlignment = loading ? NSTextAlignmentCenter : NSTextAlignmentRight;
 		}
-		y += mediaHeight + 4;
+		y += mediaSize.height + 4;
 	}
 	if (IsVoice(m)) {
 		[self layoutVoice:m cell:cell x:x y:y width:contentW mine:mine row:indexPath.row];
@@ -1940,9 +1951,10 @@ static NSString *DayKey(long long ts) {
 
 // cache sized images, smoother scrolling on the 4s
 - (UIImage *)previewOf:(UIImage *)full {
-	CGSize target = CGSizeMake(kImageWidth + 6, kImageHeight);
-	CGFloat f = MAX(target.width / full.size.width, target.height / full.size.height);
-	CGSize s = CGSizeMake(ceilf(full.size.width * f), ceilf(full.size.height * f));
+	CGSize source = full.size;
+	if (source.width <= 0 || source.height <= 0) return full;
+	CGFloat f = MIN(1, MIN((kImageWidth + 6) / source.width, kImageMaxHeight / source.height));
+	CGSize s = CGSizeMake(MAX(1, floorf(source.width * f)), MAX(1, floorf(source.height * f)));
 	UIGraphicsBeginImageContextWithOptions(s, YES, [UIScreen mainScreen].scale);
 	[full drawInRect:CGRectMake(0, 0, s.width, s.height)];
 	UIImage *small = UIGraphicsGetImageFromCurrentImageContext();

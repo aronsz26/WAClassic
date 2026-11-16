@@ -129,6 +129,7 @@ func (b *Bridge) onMessage(e *events.Message, live bool) {
 		Secs:   mediaSeconds(e.Message),
 		Quote:  b.quoteOf(ctx, chat, e.Message),
 	}
+	m.MediaWidth, m.MediaHeight = dimensionsFromMessage(e.Message)
 	if m.FromMe {
 		m.Status = statusSent
 	}

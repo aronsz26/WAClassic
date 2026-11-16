@@ -23,6 +23,8 @@ type Message struct {
 	Text     string `json:"text"`
 	Status   int    `json:"status"`
 	Secs     int    `json:"secs,omitempty"`
+	MediaWidth  int `json:"mediaWidth,omitempty"`
+	MediaHeight int `json:"mediaHeight,omitempty"`
 	Upd      int64  `json:"upd"`
 	// upd when stored; later changes only bump Upd
 	Created   int64      `json:"-"`
@@ -88,6 +90,8 @@ CREATE TABLE IF NOT EXISTS messages (
 	status  INTEGER NOT NULL,
 	raw     BLOB,
 	upd     INTEGER NOT NULL,
+	media_width INTEGER NOT NULL DEFAULT 0,
+	media_height INTEGER NOT NULL DEFAULT 0,
 	UNIQUE(chat, id)
 );
 CREATE INDEX IF NOT EXISTS messages_chat ON messages(chat, ts);
@@ -134,11 +138,16 @@ func openStore(db *sql.DB) (*Store, error) {
 	db.Exec(statusMigrate)
 	// voice message length (fails if the column exists, fine)
 	db.Exec(`ALTER TABLE messages ADD COLUMN secs INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE messages ADD COLUMN media_width INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE messages ADD COLUMN media_height INTEGER NOT NULL DEFAULT 0`)
 	// stored time, so bg poll can tell new from changed
 	db.Exec(`ALTER TABLE messages ADD COLUMN created INTEGER NOT NULL DEFAULT 0`)
 	// replies
 	for _, col := range []string{"quote_id", "quote_sender", "quote_kind", "quote_text"} {
 		db.Exec(`ALTER TABLE messages ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`)
+	}
+	if err := migrateMediaDimensions(db); err != nil {
+		return nil, err
 	}
 	db.Exec(`ALTER TABLE chats ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
 	s := &Store{db: db, wake: make(chan struct{})}
@@ -174,9 +183,9 @@ func (s *Store) AddMessage(m *Message, raw []byte, countUnread bool) (bool, erro
 	if m.Quote != nil {
 		q = *m.Quote
 	}
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO messages (id, chat, sender, from_me, ts, kind, text, status, raw, upd, secs, created,
-		quote_id, quote_sender, quote_kind, quote_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.Chat, m.Sender, m.FromMe, m.TS, m.Kind, m.Text, m.Status, raw, m.Upd, m.Secs, m.Created,
+	res, err := s.db.Exec(`INSERT OR IGNORE INTO messages (id, chat, sender, from_me, ts, kind, text, status, raw, upd, secs, media_width, media_height, created,
+		quote_id, quote_sender, quote_kind, quote_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.ID, m.Chat, m.Sender, m.FromMe, m.TS, m.Kind, m.Text, m.Status, raw, m.Upd, m.Secs, m.MediaWidth, m.MediaHeight, m.Created,
 		q.ID, q.Sender, q.Kind, q.Text)
 	if err != nil {
 		return false, err
@@ -265,7 +274,7 @@ func (s *Store) ChatName(jid string) string {
 	return name
 }
 
-const msgCols = `seq, id, chat, sender, from_me, ts, kind, text, status, upd, secs, created,
+const msgCols = `seq, id, chat, sender, from_me, ts, kind, text, status, upd, secs, media_width, media_height, created,
 	quote_id, quote_sender, quote_kind, quote_text`
 
 func scanMessages(rows *sql.Rows) ([]Message, error) {
@@ -274,7 +283,7 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 	for rows.Next() {
 		var m Message
 		var q Quote
-		if err := rows.Scan(&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Text, &m.Status, &m.Upd, &m.Secs,
+		if err := rows.Scan(&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Text, &m.Status, &m.Upd, &m.Secs, &m.MediaWidth, &m.MediaHeight,
 			&m.Created, &q.ID, &q.Sender, &q.Kind, &q.Text); err != nil {
 			return nil, err
 		}

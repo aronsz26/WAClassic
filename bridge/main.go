@@ -516,7 +516,7 @@ func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw
 		} else {
 			thumb, thumbMIME = mediaThumbnail(&msg)
 			if len(thumb) > 0 && (msg.GetImageMessage() != nil || msg.GetVideoMessage() != nil) {
-				if compact, err := resizeJPEG(thumb, 320, 52); err == nil {
+				if compact, err := compactMediaThumbnail(thumb, 320, 70); err == nil {
 					thumb, thumbMIME = compact, "image/jpeg"
 				}
 			}

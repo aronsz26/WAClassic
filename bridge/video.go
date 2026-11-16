@@ -215,6 +215,8 @@ func (b *Bridge) sendVideo(ctx context.Context, chatStr string, in []byte, quote
 		Kind:   "video",
 		Status: statusSent,
 		Secs:   secs,
+		MediaWidth: width,
+		MediaHeight: height,
 		Quote:  quote,
 	}
 	if _, err := b.store.AddMessage(m, raw, false); err != nil {

@@ -519,6 +519,21 @@ func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw
 		w.Write(thumb)
 		return
 	}
+	if r.URL.Query().Get("format") == "animated" {
+		sticker := msg.GetStickerMessage()
+		if sticker == nil || !sticker.GetIsAnimated() {
+			http.NotFound(w, r)
+			return
+		}
+		data, err := b.stickerAnimation(r.Context(), seq, sticker)
+		if err != nil {
+			httpErr(w, err, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "image/gif")
+		w.Write(data)
+		return
+	}
 	if format := r.URL.Query().Get("format"); format == "mp4" || format == "poster" {
 		if msg.GetVideoMessage() == nil && msg.GetPtvMessage() == nil {
 			httpErr(w, errNotVideo, 400)

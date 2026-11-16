@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"image/gif"
 	"image/png"
 	"os"
 	"os/exec"
@@ -115,6 +116,45 @@ func (b *Bridge) stickerThumbnail(ctx context.Context, seq int64, sticker *waE2E
 	}
 	if config.Width > stickerThumbnailMaxSide || config.Height > stickerThumbnailMaxSide {
 		return nil, fmt.Errorf("sticker preview is oversized: %dx%d", config.Width, config.Height)
+	}
+	if err := os.WriteFile(cache, data, 0o600); err != nil {
+		return data, nil
+	}
+	return data, nil
+}
+
+// stickerAnimation converts an animated WebP into a small, transparent GIF.
+// It preserves the animation's frames and timing while resizing to the same
+// 70-pixel preview used by the app. The cached GIF is the only animated asset
+// sent to the phone; the original WebP stays on the bridge.
+func (b *Bridge) stickerAnimation(ctx context.Context, seq int64, sticker *waE2E.StickerMessage) ([]byte, error) {
+	if sticker == nil || !sticker.GetIsAnimated() {
+		return nil, fmt.Errorf("sticker is not animated")
+	}
+	cache := filepath.Join(b.mediaDir, fmt.Sprintf("%d.sticker.gif", seq))
+	unlock := lockFor(cache)
+	defer unlock()
+
+	if data, err := os.ReadFile(cache); err == nil {
+		if config, err := gif.DecodeConfig(bytes.NewReader(data)); err == nil && config.Width > 0 && config.Height > 0 {
+			return data, nil
+		}
+		_ = os.Remove(cache)
+	}
+
+	original, err := b.cli.Download(ctx, sticker)
+	if err != nil {
+		return nil, fmt.Errorf("download animated sticker: %w", err)
+	}
+	filter := "[0:v]scale=70:70:force_original_aspect_ratio=decrease:flags=lanczos,pad=70:70:(ow-iw)/2:(oh-ih)/2:color=black@0,split[base][diff];[base]palettegen=stats_mode=diff:max_colors=128:reserve_transparent=1[palette];[diff][palette]paletteuse=dither=bayer:diff_mode=rectangle[gif]"
+	data, err := ffmpeg(ctx, original, "sticker.webp", "sticker.gif",
+		"-filter_complex", filter, "-map", "[gif]", "-loop", "0", "-gifflags", "+offsetting+transdiff", "-an", "-f", "gif")
+	if err != nil {
+		return nil, fmt.Errorf("convert animated sticker to GIF: %w", err)
+	}
+	config, err := gif.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width > stickerThumbnailMaxSide || config.Height > stickerThumbnailMaxSide {
+		return nil, fmt.Errorf("invalid animated sticker GIF")
 	}
 	if err := os.WriteFile(cache, data, 0o600); err != nil {
 		return data, nil

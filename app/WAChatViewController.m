@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <MobileCoreServices/MobileCoreServices.h>
+#import <ImageIO/ImageIO.h>
 #import "WAChatViewController.h"
 #import "WAClient.h"
 #import "WAAssets.h"
@@ -170,6 +171,110 @@ static NSString *DayKey(long long ts) {
 }
 @end
 
+// Keeps the GIF compressed in memory and decodes only the frame being shown.
+// UIImage's built-in animated image support retains every decoded frame, which
+// is wasteful for the older devices this app targets.
+@interface WAStickerGIFView : UIImageView
+- (void)setGIFData:(NSData *)data;
+- (void)pausePlayback;
+- (void)resumePlayback;
+@end
+
+@implementation WAStickerGIFView {
+	NSData *_gifData;
+	CGImageSourceRef _gifSource;
+	NSArray *_frameDurations;
+	NSUInteger _frameCount;
+	NSUInteger _frameIndex;
+	NSTimer *_frameTimer;
+}
+
+- (void)setGIFData:(NSData *)data {
+	if (_gifData == data || [_gifData isEqualToData:data]) return;
+	[_frameTimer invalidate];
+	_frameTimer = nil;
+	if (_gifSource) {
+		CFRelease(_gifSource);
+		_gifSource = NULL;
+	}
+	_gifData = data;
+	_frameDurations = nil;
+	_frameCount = 0;
+	_frameIndex = 0;
+	if (!data.length) return;
+	_gifSource = CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
+	if (!_gifSource) return;
+	_frameCount = CGImageSourceGetCount(_gifSource);
+	if (_frameCount < 2) {
+		_frameCount = 0;
+		return;
+	}
+	NSMutableArray *durations = [NSMutableArray arrayWithCapacity:_frameCount];
+	for (NSUInteger i = 0; i < _frameCount; i++) {
+		CFDictionaryRef properties = CGImageSourceCopyPropertiesAtIndex(_gifSource, i, NULL);
+		NSDictionary *gif = properties ? [(__bridge NSDictionary *)properties objectForKey:(id)kCGImagePropertyGIFDictionary] : nil;
+		NSNumber *delay = [gif objectForKey:(id)kCGImagePropertyGIFUnclampedDelayTime];
+		if (![delay doubleValue]) delay = [gif objectForKey:(id)kCGImagePropertyGIFDelayTime];
+		double seconds = delay ? [delay doubleValue] : 0.1;
+		[durations addObject:@(MAX(0.02, seconds))];
+		if (properties) CFRelease(properties);
+	}
+	_frameDurations = durations;
+	[self showFrame:0];
+	[self startPlayback];
+}
+
+- (void)showFrame:(NSUInteger)index {
+	if (!_gifSource || index >= _frameCount) return;
+	CGImageRef frame = CGImageSourceCreateImageAtIndex(_gifSource, index, NULL);
+	if (!frame) return;
+	self.image = [UIImage imageWithCGImage:frame];
+	CGImageRelease(frame);
+}
+
+- (void)startPlayback {
+	if (!self.window || _frameCount < 2 || _frameTimer) return;
+	_frameIndex = 0;
+	[self showFrame:_frameIndex];
+	[self scheduleNextFrame];
+}
+
+- (void)pausePlayback {
+	[_frameTimer invalidate];
+	_frameTimer = nil;
+}
+
+- (void)resumePlayback {
+	[self startPlayback];
+}
+
+- (void)scheduleNextFrame {
+	NSTimeInterval delay = [[_frameDurations objectAtIndex:_frameIndex] doubleValue];
+	_frameTimer = [NSTimer scheduledTimerWithTimeInterval:delay target:self selector:@selector(advanceFrame:)
+											 userInfo:nil repeats:NO];
+}
+
+- (void)advanceFrame:(NSTimer *)timer {
+	_frameTimer = nil;
+	if (!self.window || _frameCount < 2) return;
+	_frameIndex = (_frameIndex + 1) % _frameCount;
+	[self showFrame:_frameIndex];
+	[self scheduleNextFrame];
+}
+
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	if (self.window) [self resumePlayback];
+	else [self pausePlayback];
+}
+
+- (void)dealloc {
+	[_frameTimer invalidate];
+	if (_gifSource) CFRelease(_gifSource);
+}
+
+@end
+
 @interface WAMessageCell : UITableViewCell
 @property (nonatomic, strong) UIImageView *bubble;
 @property (nonatomic, strong) WAPlainBubble *plainBubble;
@@ -177,7 +282,8 @@ static NSString *DayKey(long long ts) {
 @property (nonatomic, strong) UIView *nameLine, *timePill, *callPill;
 @property (nonatomic, strong) UILabel *callLabel, *callTime;
 @property (nonatomic, strong) UIImageView *callIcon;
-@property (nonatomic, strong) UIImageView *tick, *photo, *micIcon;
+@property (nonatomic, strong) UIImageView *tick, *micIcon;
+@property (nonatomic, strong) WAStickerGIFView *photo;
 @property (nonatomic, strong) UIButton *playButton;
 @property (nonatomic, strong) UIImageView *videoPlay;
 @property (nonatomic, strong) UIView *videoBar;
@@ -207,7 +313,7 @@ static NSString *DayKey(long long ts) {
 		_bodyLabel = [self label:TextFont() color:[UIColor blackColor]];
 		_bodyLabel.numberOfLines = 0;
 		_bodyLabel.lineBreakMode = NSLineBreakByWordWrapping;
-		_photo = [[UIImageView alloc] init];
+		_photo = [[WAStickerGIFView alloc] init];
 		_photo.contentMode = UIViewContentModeScaleAspectFill;
 		_photo.clipsToBounds = YES;
 		_photo.layer.cornerRadius = 5;
@@ -331,8 +437,10 @@ static NSString *DayKey(long long ts) {
 	NSDictionary *_presence;
 
 	NSCache *_images;
+	NSCache *_animatedStickers;
 	NSNumber *_loadingVideo;
 	NSMutableSet *_loadingImages;
+	NSMutableSet *_loadingAnimatedStickers;
 	NSMutableSet *_missingStickerThumbs;
 	NSInteger _tempID;
 
@@ -377,7 +485,10 @@ static NSString *DayKey(long long ts) {
 		_messages = [NSMutableArray array];
 		_rows = [NSMutableArray array];
 		_images = [[NSCache alloc] init];
+		_animatedStickers = [[NSCache alloc] init];
+		_animatedStickers.countLimit = 8;
 		_loadingImages = [NSMutableSet set];
+		_loadingAnimatedStickers = [NSMutableSet set];
 		_missingStickerThumbs = [NSMutableSet set];
 		_voiceData = [[NSCache alloc] init];
 		_pending = [NSMutableArray array];
@@ -1142,6 +1253,8 @@ static NSString *DayKey(long long ts) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	WAMessageCell *cell = [tableView dequeueReusableCellWithIdentifier:@"msg"];
 	if (!cell) cell = [[WAMessageCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"msg"];
+	[cell.photo setGIFData:nil];
+	cell.photo.image = nil;
 	[cell hideAll];
 	cell.bodyLabel.textAlignment = NSTextAlignmentLeft;
 	cell.contentView.transform = CGAffineTransformIdentity;
@@ -1214,6 +1327,10 @@ static NSString *DayKey(long long ts) {
 		cell.photo.frame = CGRectMake(x - 3, y, contentW + 6, mediaHeight);
 		cell.photo.image = [self imageFor:m];
 		if (sticker) {
+			NSNumber *seq = m[@"seq"];
+			NSData *gifData = [m[@"animated"] boolValue] ? [_animatedStickers objectForKey:seq] : nil;
+			if (gifData) [cell.photo setGIFData:gifData];
+			else if ([m[@"animated"] boolValue]) [self requestStickerAnimationFor:m];
 			cell.photo.contentMode = UIViewContentModeScaleAspectFit;
 			cell.photo.clipsToBounds = NO;
 			cell.photo.layer.cornerRadius = 0;
@@ -1295,6 +1412,14 @@ static NSString *DayKey(long long ts) {
 		cell.tick.frame = CGRectMake(pillX + (time.length ? 8 + timeW : 3), pillY + 1, 16, 14);
 	}
 	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(WAMessageCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[cell.photo resumePlayback];
+}
+
+- (void)tableView:(UITableView *)tableView didEndDisplayingCell:(WAMessageCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+	[cell.photo pausePlayback];
 }
 
 #pragma mark - Voice messages
@@ -1986,6 +2111,23 @@ static NSString *DayKey(long long ts) {
 			[self reloadSeq:seq];
 		}];
 	return nil;
+}
+
+- (void)requestStickerAnimationFor:(NSDictionary *)m {
+	NSNumber *seq = m[@"seq"];
+	if (!seq || [_animatedStickers objectForKey:seq] || [_loadingAnimatedStickers containsObject:seq]) return;
+	[_loadingAnimatedStickers addObject:seq];
+	NSURLRequest *request = [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:@"animated"];
+	[[WAClient shared] load:request completion:^(NSData *data, NSInteger code, NSError *error) {
+		[self->_loadingAnimatedStickers removeObject:seq];
+		if (code != 200 || !data.length) return;
+		CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
+		NSUInteger frames = source ? CGImageSourceGetCount(source) : 0;
+		if (source) CFRelease(source);
+		if (frames < 2) return;
+		[self->_animatedStickers setObject:data forKey:seq cost:data.length];
+		[self reloadSeq:seq];
+	}];
 }
 
 @end

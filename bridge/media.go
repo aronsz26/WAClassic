@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	_ "image/gif"
 	"image/jpeg"
+	_ "image/png"
 	"log"
 	"math"
 	"net/http"
@@ -67,22 +69,94 @@ func duration(ctx context.Context, data []byte, name string) int {
 	return int(math.Round(f))
 }
 
+// resizeJPEG creates a bounded iPhone-friendly image variant. Animated inputs
+// use their first frame; stickers are served through the transparent PNG path.
+func resizeJPEG(data []byte, maxSide, quality int) ([]byte, error) {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	if w <= 0 || h <= 0 || int64(w)*int64(h) > 40000000 {
+		return nil, fmt.Errorf("image dimensions out of range: %dx%d", w, h)
+	}
+	scale := 1.0
+	if max(w, h) > maxSide {
+		scale = float64(maxSide) / float64(max(w, h))
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, max(1, int(float64(w)*scale+0.5)), max(1, int(float64(h)*scale+0.5))))
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, bounds, draw.Src, nil)
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func compactMediaThumbnail(data []byte, maxSide, quality int) ([]byte, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || max(cfg.Width, cfg.Height) <= maxSide {
+		return data, nil
+	}
+	return resizeJPEG(data, maxSide, quality)
+}
+
+func (b *Bridge) imageFile(ctx context.Context, seq int64, dl whatsmeow.DownloadableMessage, optimized bool) ([]byte, error) {
+	name := fmt.Sprintf("%d.original", seq)
+	if optimized {
+		name = fmt.Sprintf("%d.optimized.jpg", seq)
+	}
+	path := filepath.Join(b.mediaDir, name)
+	unlock := lockFor(path)
+	defer unlock()
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+		touchMediaCache(path)
+		return data, nil
+	}
+	if optimized {
+		original, err := b.imageFile(ctx, seq, dl, false)
+		if err != nil {
+			return nil, err
+		}
+		data, err := resizeJPEG(original, 960, 72)
+		if err != nil {
+			// ffmpeg handles image formats not registered by Go's decoders.
+			data, err = ffmpeg(ctx, original, "in.img", "out.jpg", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-frames:v", "1", "-q:v", "5", "-f", "image2")
+		}
+		if err != nil {
+			return nil, err
+		}
+		writeMediaCache(path, data)
+		return data, nil
+	}
+	data, err := b.cli.Download(ctx, dl)
+	if err != nil {
+		return nil, err
+	}
+	writeMediaCache(path, data)
+	return data, nil
+}
+
 // serveAudioM4A converts opus/ogg voice notes to aac m4a for iOS 6.
 func (b *Bridge) serveAudioM4A(w http.ResponseWriter, r *http.Request, seq int64, dl whatsmeow.DownloadableMessage) {
 	cache := filepath.Join(b.mediaDir, fmt.Sprintf("%d.m4a", seq))
 	data, err := os.ReadFile(cache)
+	if err == nil {
+		touchMediaCache(cache)
+	}
 	if err != nil {
 		ogg, err := b.cli.Download(r.Context(), dl)
 		if err != nil {
 			httpErr(w, err, 502)
 			return
 		}
-		data, err = ffmpeg(r.Context(), ogg, "in.ogg", "out.m4a", "-vn", "-ac", "1", "-c:a", "aac", "-b:a", "48k", "-f", "ipod")
+		data, err = ffmpeg(r.Context(), ogg, "in.ogg", "out.m4a", "-vn", "-ac", "1", "-c:a", "aac", "-b:a", "32k", "-f", "ipod")
 		if err != nil {
 			httpErr(w, err, 500)
 			return
 		}
-		os.WriteFile(cache, data, 0o600)
+		writeMediaCache(cache, data)
 	}
 	w.Header().Set("Content-Type", "audio/mp4")
 	w.Write(data)
@@ -243,6 +317,8 @@ func (b *Bridge) sendImage(ctx context.Context, chatStr string, data []byte, cap
 		Kind:   "image",
 		Text:   caption,
 		Status: statusSent,
+		MediaWidth: size.X,
+		MediaHeight: size.Y,
 		Quote:  quote,
 	}
 	if _, err := b.store.AddMessage(m, raw, false); err != nil {

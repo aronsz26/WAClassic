@@ -277,9 +277,6 @@ typedef void (^WASetter)(BOOL on);
 
 static NSArray *NetworkValues(void) { return @[@"never", @"wifi", @"all"]; }
 static NSArray *NetworkTitles(void) { return @[WAL(@"Never"), WAL(@"Wi-Fi"), WAL(@"Wi-Fi and Cellular")]; }
-static NSArray *OptimizeValues(void) { return @[@"off", @"cellular", @"always"]; }
-static NSArray *OptimizeTitles(void) { return @[WAL(@"Off"), WAL(@"On Cellular"), WAL(@"Always")]; }
-
 static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 	NSUInteger i = [values indexOfObject:WAPrefString(key) ?: @""];
 	return i == NSNotFound ? titles[0] : titles[i];
@@ -299,15 +296,9 @@ static NSString *TitleFor(NSString *key, NSArray *values, NSArray *titles) {
 					values:NetworkValues() titles:NetworkTitles() footer:nil] animated:YES];
 			}}];
 	}
-	NSString *optFooter = WAL(@"Videos are scaled down by your bridge before they are sent to your iPhone. They load much faster but look less sharp.");
 	self.sections = @[
 		@{@"header": WAL(@"Auto-Download Media"), @"rows": media,
-			@"footer": WAL(@"Media that is not downloaded automatically shows a small preview. Tap it to load it.")},
-		@{@"rows": @[@{@"title": WAL(@"Optimize Video"), @"detail": TitleFor(WAPrefOptimizeVideo, OptimizeValues(), OptimizeTitles()),
-			@"disclosure": @YES, @"action": ^{
-				[weak.navigationController pushViewController:[[WAOptionController alloc] initWithTitle:WAL(@"Optimize Video")
-					key:WAPrefOptimizeVideo values:OptimizeValues() titles:OptimizeTitles() footer:optFooter] animated:YES];
-			}}], @"footer": optFooter},
+			@"footer": WAL(@"Previews stay small. Wi-Fi loads the best quality; cellular data uses optimized media when opened.")},
 	];
 }
 
@@ -674,6 +665,7 @@ static NSString *OwnWallpaperPath(void) {
 	[[WAClient shared] post:@"/api/me/photo" params:nil data:jpeg contentType:@"image/jpeg" completion:^(id json, NSError *error) {
 		[UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
 		if (error) [self alert:WAL(@"Sorry, could not update your profile photo.")];
+		else [[WAClient shared] forgetAvatar:self->_me[@"jid"]];
 		[self loadPhoto];
 	}];
 }

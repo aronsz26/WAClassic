@@ -45,7 +45,7 @@ func lockFor(key string) func() {
 // mp4ForIPhone: h264 main, max 640px, aac, faststart (plays on the 4s).
 func mp4ForIPhone(ctx context.Context, in []byte) ([]byte, error) {
 	return ffmpeg(ctx, in, "in.mp4", "out.mp4",
-		"-vf", "scale='min(640,iw)':-2", "-c:v", "libx264", "-profile:v", "main", "-level", "3.1",
+		"-vf", "scale=640:640:force_original_aspect_ratio=decrease", "-c:v", "libx264", "-profile:v", "main", "-level", "3.1",
 		"-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "26",
 		"-c:a", "aac", "-b:a", "96k", "-ac", "2", "-movflags", "+faststart", "-f", "mp4")
 }
@@ -53,7 +53,7 @@ func mp4ForIPhone(ctx context.Context, in []byte) ([]byte, error) {
 // mp4Optimized: max 480px, baseline 3.0 (works down to the 3gs), mono, ~1/4 size.
 func mp4Optimized(ctx context.Context, in []byte) ([]byte, error) {
 	return ffmpeg(ctx, in, "in.mp4", "out.mp4",
-		"-vf", "scale='min(480,iw)':-2", "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0",
+		"-vf", "scale=480:480:force_original_aspect_ratio=decrease", "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0",
 		"-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "30", "-maxrate", "600k", "-bufsize", "1200k",
 		"-c:a", "aac", "-b:a", "48k", "-ac", "1", "-movflags", "+faststart", "-f", "mp4")
 }
@@ -68,6 +68,7 @@ func (b *Bridge) videoFile(ctx context.Context, seq int64, dl whatsmeow.Download
 	unlock := lockFor(path)
 	defer unlock()
 	if _, err := os.Stat(path); err == nil {
+		touchMediaCache(path)
 		return path, nil
 	}
 	orig, err := b.cli.Download(ctx, dl)
@@ -78,13 +79,15 @@ func (b *Bridge) videoFile(ctx context.Context, seq int64, dl whatsmeow.Download
 	if err != nil {
 		return "", err
 	}
-	return path, os.WriteFile(path, mp4, 0o600)
+	writeMediaCache(path, mp4)
+	return path, nil
 }
 
 // posterFile is the preview frame.
 func (b *Bridge) posterFile(ctx context.Context, seq int64, video string) (string, error) {
 	path := filepath.Join(b.mediaDir, fmt.Sprintf("%d.jpg", seq))
 	if _, err := os.Stat(path); err == nil {
+		touchMediaCache(path)
 		return path, nil
 	}
 	data, err := os.ReadFile(video)
@@ -95,7 +98,8 @@ func (b *Bridge) posterFile(ctx context.Context, seq int64, video string) (strin
 	if err != nil {
 		return "", err
 	}
-	return path, os.WriteFile(path, frame, 0o600)
+	writeMediaCache(path, frame)
+	return path, nil
 }
 
 // videoFrame grabs a jpeg at 0.5s (or the first frame).
@@ -211,6 +215,8 @@ func (b *Bridge) sendVideo(ctx context.Context, chatStr string, in []byte, quote
 		Kind:   "video",
 		Status: statusSent,
 		Secs:   secs,
+		MediaWidth: width,
+		MediaHeight: height,
 		Quote:  quote,
 	}
 	if _, err := b.store.AddMessage(m, raw, false); err != nil {
@@ -218,7 +224,7 @@ func (b *Bridge) sendVideo(ctx context.Context, chatStr string, in []byte, quote
 	}
 	if m.Seq > 0 {
 		// no need to download our own video again
-		os.WriteFile(filepath.Join(b.mediaDir, fmt.Sprintf("%d.mp4", m.Seq)), mp4, 0o600)
+		writeMediaCache(filepath.Join(b.mediaDir, fmt.Sprintf("%d.mp4", m.Seq)), mp4)
 	}
 	b.store.notify()
 	return m, nil

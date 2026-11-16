@@ -116,6 +116,7 @@ func main() {
 	b.calls = newCalls(b) // needs to exist before connecting
 	b.mediaDir = filepath.Join(*dataDir, "media")
 	os.MkdirAll(b.mediaDir, 0o700)
+	pruneMediaCache(b.mediaDir)
 	b.avatarDir = filepath.Join(*dataDir, "avatars")
 	os.MkdirAll(b.avatarDir, 0o700)
 	b.presence = map[string]*Presence{}
@@ -498,15 +499,33 @@ func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw
 		return
 	}
 	if r.URL.Query().Get("format") == "thumb" { // thumbnail for all media
-		thumb := msg.GetImageMessage().GetJPEGThumbnail()
-		if thumb == nil {
-			thumb = msg.GetVideoMessage().GetJPEGThumbnail()
+		var thumb []byte
+		var thumbMIME string
+		if sticker := msg.GetStickerMessage(); sticker != nil {
+			if len(sticker.GetPngThumbnail()) == 0 && sticker.GetFileLength() == 0 {
+				http.NotFound(w, r)
+				return
+			}
+			var err error
+			thumb, err = b.stickerThumbnail(r.Context(), seq, sticker)
+			thumbMIME = "image/png"
+			if err != nil {
+				httpErr(w, err, http.StatusBadGateway)
+				return
+			}
+		} else {
+			thumb, thumbMIME = mediaThumbnail(&msg)
+			if len(thumb) > 0 && (msg.GetImageMessage() != nil || msg.GetVideoMessage() != nil) {
+				if compact, err := compactMediaThumbnail(thumb, 320, 70); err == nil {
+					thumb, thumbMIME = compact, "image/jpeg"
+				}
+			}
 		}
-		if thumb == nil {
+		if len(thumb) == 0 {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Type", thumbMIME)
 		w.Write(thumb)
 		return
 	}
@@ -520,6 +539,21 @@ func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw
 	}
 	if msg.GetAudioMessage() != nil && r.URL.Query().Get("format") == "m4a" {
 		b.serveAudioM4A(w, r, seq, dl)
+		return
+	}
+	if imageMsg := msg.GetImageMessage(); imageMsg != nil {
+		optimized := r.URL.Query().Get("format") == "optimized"
+		data, err := b.imageFile(r.Context(), seq, imageMsg, optimized)
+		if err != nil {
+			httpErr(w, err, 502)
+			return
+		}
+		if optimized {
+			w.Header().Set("Content-Type", "image/jpeg")
+		} else {
+			w.Header().Set("Content-Type", mime)
+		}
+		w.Write(data)
 		return
 	}
 	data, err := b.cli.Download(r.Context(), dl)

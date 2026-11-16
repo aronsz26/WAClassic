@@ -15,6 +15,7 @@
 // 2.10 layout: GreenBubbleOut/GrayBubbleIn, time pill next to bubble, input bar at the bottom
 static const CGFloat kMaxTextWidth = 200;
 static const CGFloat kImageWidth = 200, kImageHeight = 150;
+static const CGFloat kStickerWidth = 128, kStickerHeight = 128;
 static const CGFloat kVoiceWidth = 196, kVoiceHeight = 42;
 static const CGFloat kBarHeight = 40;
 static const CGFloat kQuoteHeight = 40; // quote inside a reply
@@ -29,6 +30,10 @@ static UIFont *TimeFont(void) { return [UIFont italicSystemFontOfSize:11]; }
 static BOOL IsMedia(NSDictionary *m) {
 	NSString *kind = m[@"kind"];
 	return [kind isEqualToString:@"image"] || [kind isEqualToString:@"sticker"] || [kind isEqualToString:@"video"];
+}
+
+static BOOL IsSticker(NSDictionary *m) {
+	return [m[@"kind"] isEqualToString:@"sticker"];
 }
 
 static BOOL IsVideo(NSDictionary *m) {
@@ -328,6 +333,7 @@ static NSString *DayKey(long long ts) {
 	NSCache *_images;
 	NSNumber *_loadingVideo;
 	NSMutableSet *_loadingImages;
+	NSMutableSet *_missingStickerThumbs;
 	NSInteger _tempID;
 
 	AVAudioPlayer *_player;
@@ -372,6 +378,7 @@ static NSString *DayKey(long long ts) {
 		_rows = [NSMutableArray array];
 		_images = [[NSCache alloc] init];
 		_loadingImages = [NSMutableSet set];
+		_missingStickerThumbs = [NSMutableSet set];
 		_voiceData = [[NSCache alloc] init];
 		_pending = [NSMutableArray array];
 		_prefetching = [NSMutableSet set];
@@ -1084,8 +1091,8 @@ static NSString *DayKey(long long ts) {
 		h += kQuoteHeight + 4;
 	}
 	if (IsMedia(m)) {
-		w = MAX(w, kImageWidth);
-		h += kImageHeight + (text.height ? 4 : 0);
+		w = MAX(w, IsSticker(m) ? kStickerWidth : kImageWidth);
+		h += (IsSticker(m) ? kStickerHeight : kImageHeight) + (text.height ? 4 : 0);
 	}
 	if (IsVoice(m)) {
 		w = MAX(w, kVoiceWidth);
@@ -1136,6 +1143,7 @@ static NSString *DayKey(long long ts) {
 	WAMessageCell *cell = [tableView dequeueReusableCellWithIdentifier:@"msg"];
 	if (!cell) cell = [[WAMessageCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"msg"];
 	[cell hideAll];
+	cell.bodyLabel.textAlignment = NSTextAlignmentLeft;
 	cell.contentView.transform = CGAffineTransformIdentity;
 	cell.contentView.layer.shouldRasterize = NO;
 	CGFloat width = tableView.bounds.size.width;
@@ -1153,13 +1161,17 @@ static NSString *DayKey(long long ts) {
 		return cell;
 	}
 	BOOL mine = [m[@"fromMe"] boolValue];
+	BOOL sticker = IsSticker(m);
 	CGSize textSize;
 	CGSize size = [self bubbleSizeFor:m textSize:&textSize];
 	CGRect bubble = CGRectMake(mine ? width - size.width - 3 : 3, 2, size.width, size.height);
 	// per chat color or default
 	NSString *color = WABubbleColorName(_jid, mine);
 	UIImage *bubbleImage = WABubbleImage(color, mine);
-	if (bubbleImage) {
+	if (sticker) {
+		cell.bubble.hidden = YES;
+		cell.plainBubble.hidden = YES;
+	} else if (bubbleImage) {
 		cell.bubble.hidden = NO;
 		cell.bubble.image = bubbleImage;
 		cell.bubble.frame = bubble;
@@ -1198,8 +1210,27 @@ static NSString *DayKey(long long ts) {
 	}
 	if (IsMedia(m)) {
 		cell.photo.hidden = NO;
-		cell.photo.frame = CGRectMake(x - 3, y, contentW + 6, kImageHeight);
+		CGFloat mediaHeight = sticker ? kStickerHeight : kImageHeight;
+		cell.photo.frame = CGRectMake(x - 3, y, contentW + 6, mediaHeight);
 		cell.photo.image = [self imageFor:m];
+		if (sticker) {
+			cell.photo.contentMode = UIViewContentModeScaleAspectFit;
+			cell.photo.clipsToBounds = NO;
+			cell.photo.layer.cornerRadius = 0;
+			cell.photo.backgroundColor = [UIColor clearColor];
+			if (!cell.photo.image) {
+				cell.bodyLabel.hidden = NO;
+				cell.bodyLabel.text = WAKindLabel(@"sticker");
+				cell.bodyLabel.textColor = WAColor(0x777777);
+				cell.bodyLabel.textAlignment = NSTextAlignmentCenter;
+				cell.bodyLabel.frame = cell.photo.frame;
+			}
+		} else {
+			cell.photo.contentMode = UIViewContentModeScaleAspectFill;
+			cell.photo.clipsToBounds = YES;
+			cell.photo.layer.cornerRadius = 5;
+			cell.photo.backgroundColor = [UIColor colorWithWhite:0.85 alpha:1];
+		}
 		if (IsVideo(m)) {
 			CGRect p = cell.photo.frame;
 			BOOL loading = [_loadingVideo isEqual:m[@"seq"]];
@@ -1212,7 +1243,7 @@ static NSString *DayKey(long long ts) {
 			cell.videoLabel.frame = CGRectMake(p.origin.x + 6, CGRectGetMaxY(p) - 17, p.size.width - 12, 16);
 			cell.videoLabel.textAlignment = loading ? NSTextAlignmentCenter : NSTextAlignmentRight;
 		}
-		y += kImageHeight + 4;
+		y += mediaHeight + 4;
 	}
 	if (IsVoice(m)) {
 		[self layoutVoice:m cell:cell x:x y:y width:contentW mine:mine row:indexPath.row];
@@ -1586,6 +1617,7 @@ static NSString *DayKey(long long ts) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	NSDictionary *m = [self messageAtRow:indexPath.row];
 	if (!m || [m[@"seq"] longLongValue] <= 0) return;
+	if (IsSticker(m)) return; // sticker previews never fetch the original file
 	if (IsCall(m) && !_group) {
 		[_field resignFirstResponder];
 		UIActionSheet *sheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:nil
@@ -1929,20 +1961,28 @@ static NSString *DayKey(long long ts) {
 
 - (UIImage *)imageFor:(NSDictionary *)m {
 	NSNumber *seq = m[@"seq"];
-	UIImage *img = [_images objectForKey:seq];
+	if (IsSticker(m) && [_missingStickerThumbs containsObject:seq]) return nil;
+	id cached = [_images objectForKey:seq];
+	UIImage *img = [cached isKindOfClass:[UIImage class]] ? cached : nil;
 	if (img || [_loadingImages containsObject:seq] || [seq longLongValue] <= 0) return img;
 	[_loadingImages addObject:seq];
 	// no auto-download: show the thumb, full pic on tap
 	BOOL incoming = ![m[@"fromMe"] boolValue];
-	BOOL full = !incoming || WAAutoDownload(WAPrefAutoPhotos);
+	BOOL full = !IsSticker(m) && (!incoming || WAAutoDownload(WAPrefAutoPhotos));
 	NSURLRequest *req = IsVideo(m) ? [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:@"poster"]
-		: [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:full ? nil : @"thumb"];
+		: [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:(IsSticker(m) || !full) ? @"thumb" : nil];
 	[[WAClient shared] load:req completion:^(NSData *data, NSInteger code, NSError *error) {
 			[self->_loadingImages removeObject:seq];
 			UIImage *img = data.length ? [UIImage imageWithData:data] : nil;
-			if (!img) return;
-			if (full && incoming && !IsVideo(m)) [self saveIncoming:img seq:seq];
-			[self->_images setObject:[self previewOf:img] forKey:seq];
+			if (!img) {
+				if (IsSticker(m) && (code == 404 || (code == 200 && data.length))) {
+					[self->_missingStickerThumbs addObject:seq];
+					[self reloadSeq:seq];
+				}
+				return;
+			}
+			if (full && incoming && !IsVideo(m) && !IsSticker(m)) [self saveIncoming:img seq:seq];
+			[self->_images setObject:IsSticker(m) ? img : [self previewOf:img] forKey:seq];
 			[self reloadSeq:seq];
 		}];
 	return nil;

@@ -498,15 +498,12 @@ func (b *Bridge) serveRaw(w http.ResponseWriter, r *http.Request, seq int64, raw
 		return
 	}
 	if r.URL.Query().Get("format") == "thumb" { // thumbnail for all media
-		thumb := msg.GetImageMessage().GetJPEGThumbnail()
-		if thumb == nil {
-			thumb = msg.GetVideoMessage().GetJPEGThumbnail()
-		}
-		if thumb == nil {
+		thumb, thumbMIME := mediaThumbnail(&msg)
+		if len(thumb) == 0 {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Type", thumbMIME)
 		w.Write(thumb)
 		return
 	}

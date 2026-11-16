@@ -1838,14 +1838,14 @@ static NSString *DayKey(long long ts) {
 				[self->_prefetching removeObject:seq];
 				if (code == 200 && data.length) [self->_voiceData setObject:data forKey:seq];
 			}];
-	} else if (IsVideo(m) && ![m[@"fromMe"] boolValue] && ![self cachedVideoFor:seq] && !_loadingVideo
+	} else if (IsVideo(m) && ![m[@"fromMe"] boolValue] && !_loadingVideo
 		&& WAAutoDownload(WAPrefAutoVideos)) {
 		BOOL small = WAOptimizeVideoNow();
+		if ([self cachedVideoFor:seq small:small]) return;
 		[_prefetching addObject:seq];
 		[[WAClient shared] load:[[WAClient shared] videoRequestForSeq:[seq longLongValue] optimized:small]
 			completion:^(NSData *data, NSInteger code, NSError *error) {
 				[self->_prefetching removeObject:seq];
-				if (code == 200 && data.length) [data writeToFile:[self videoPathFor:seq small:small] atomically:YES];
 			}];
 	}
 }
@@ -1856,18 +1856,19 @@ static NSString *DayKey(long long ts) {
 }
 
 // full video or the optimized one
-- (NSString *)cachedVideoFor:(NSNumber *)seq {
+- (NSString *)cachedVideoFor:(NSNumber *)seq small:(BOOL)small {
+	NSURLRequest *request = [[WAClient shared] videoRequestForSeq:[seq longLongValue] optimized:small];
+	NSString *persistent = [[WAClient shared] cachedMediaPathForRequest:request];
+	if (persistent) return persistent;
 	NSFileManager *fm = [NSFileManager defaultManager];
-	for (NSNumber *small in @[@NO, @YES]) {
-		NSString *path = [self videoPathFor:seq small:[small boolValue]];
-		if ([fm fileExistsAtPath:path]) return path;
-	}
-	return nil;
+	NSString *path = [self videoPathFor:seq small:small];
+	return [fm fileExistsAtPath:path] ? path : nil;
 }
 
 - (void)playVideo:(NSDictionary *)m {
 	NSNumber *seq = m[@"seq"];
-	NSString *cached = [self cachedVideoFor:seq];
+	BOOL small = WAOptimizeVideoNow();
+	NSString *cached = [self cachedVideoFor:seq small:small];
 	if (cached) {
 		[self presentVideoAt:cached];
 		return;
@@ -1876,13 +1877,16 @@ static NSString *DayKey(long long ts) {
 	_loadingVideo = seq;
 	[self reloadSeq:seq];
 	// optimize video setting
-	BOOL small = WAOptimizeVideoNow();
-	NSString *path = [self videoPathFor:seq small:small];
-	[[WAClient shared] load:[[WAClient shared] videoRequestForSeq:[seq longLongValue] optimized:small]
+	__block NSString *path = [self videoPathFor:seq small:small];
+	NSURLRequest *request = [[WAClient shared] videoRequestForSeq:[seq longLongValue] optimized:small];
+	[[WAClient shared] load:request
 		completion:^(NSData *data, NSInteger status, NSError *error) {
 			self->_loadingVideo = nil;
 			[self reloadSeq:seq];
-			if (status != 200 || !data.length || ![data writeToFile:path atomically:YES]) {
+			NSString *persistent = [[WAClient shared] cachedMediaPathForRequest:request];
+			if (persistent) path = persistent;
+			else if (status == 200 && data.length) [data writeToFile:path atomically:YES];
+			if (status != 200 || !data.length || ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
 				[[[UIAlertView alloc] initWithTitle:WAL(@"Video") message:WAL(@"Could not be loaded.") delegate:nil
 					cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
 				return;
@@ -1917,7 +1921,8 @@ static NSString *DayKey(long long ts) {
 	vc.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
 	[self presentViewController:vc animated:YES completion:nil];
 	[[UIApplication sharedApplication] setStatusBarHidden:YES withAnimation:UIStatusBarAnimationFade];
-	[[WAClient shared] load:[[WAClient shared] mediaRequestForSeq:[m[@"seq"] longLongValue]]
+	NSString *quality = WAOnWiFi() ? nil : @"optimized";
+	[[WAClient shared] load:[[WAClient shared] mediaRequestForSeq:[m[@"seq"] longLongValue] format:quality]
 		completion:^(NSData *data, NSInteger status, NSError *error) {
 			UIImage *full = status == 200 ? [UIImage imageWithData:data] : nil;
 			if (full) iv.image = full;
@@ -1969,8 +1974,9 @@ static NSString *DayKey(long long ts) {
 	// no auto-download: show the thumb, full pic on tap
 	BOOL incoming = ![m[@"fromMe"] boolValue];
 	BOOL full = !IsSticker(m) && (!incoming || WAAutoDownload(WAPrefAutoPhotos));
+	NSString *format = IsSticker(m) || !full ? @"thumb" : (WAOnWiFi() ? nil : @"optimized");
 	NSURLRequest *req = IsVideo(m) ? [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:@"poster"]
-		: [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:(IsSticker(m) || !full) ? @"thumb" : nil];
+		: [[WAClient shared] mediaRequestForSeq:[seq longLongValue] format:format];
 	[[WAClient shared] load:req completion:^(NSData *data, NSInteger code, NSError *error) {
 			[self->_loadingImages removeObject:seq];
 			UIImage *img = data.length ? [UIImage imageWithData:data] : nil;

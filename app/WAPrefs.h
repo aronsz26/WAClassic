@@ -9,7 +9,7 @@ extern NSString *const WAPrefMessageTimestamp, *const WAPrefSaveIncomingMedia, *
 extern NSString *const WAPrefWallpaper; // nil = default
 // auto-download: never / wifi / all
 extern NSString *const WAPrefAutoPhotos, *const WAPrefAutoAudio, *const WAPrefAutoVideos;
-extern NSString *const WAPrefOptimizeVideo; // off / cellular / always
+extern NSString *const WAPrefOptimizeVideo; // legacy setting; media policy follows Wi-Fi/cellular automatically
 extern NSString *const WAPrefBubbleOut, *const WAPrefBubbleIn;
 // video calls only in WA Dev (debug switch "videoCalls"), always off in the normal app
 extern NSString *const WAPrefVideoCalls;

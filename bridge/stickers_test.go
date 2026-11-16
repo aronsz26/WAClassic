@@ -40,7 +40,7 @@ func TestStickerThumbnailServedWithoutDownloadingOriginal(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/media?seq=1&format=thumb", nil)
 	res := httptest.NewRecorder()
-	(&Bridge{}).serveRaw(res, req, 1, raw)
+	(&Bridge{mediaDir: t.TempDir()}).serveRaw(res, req, 1, raw)
 
 	if res.Code != 200 {
 		t.Fatalf("status = %d, want 200: %s", res.Code, res.Body.String())
@@ -85,7 +85,7 @@ func TestStickerWithoutThumbnailReturnsNotFound(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/media?seq=1&format=thumb", nil)
 	res := httptest.NewRecorder()
-	(&Bridge{}).serveRaw(res, req, 1, raw)
+	(&Bridge{mediaDir: t.TempDir()}).serveRaw(res, req, 1, raw)
 
 	if res.Code != 404 {
 		t.Fatalf("status = %d, want 404", res.Code)

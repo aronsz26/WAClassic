@@ -3,6 +3,7 @@
 #import "WAClient.h"
 #import "WAAssets.h"
 #import "WAUtil.h"
+#import "WAPrefs.h"
 
 #pragma mark - Viewer
 
@@ -53,7 +54,10 @@
 }
 
 + (void)playVideoSeq:(long long)seq from:(UIViewController *)vc {
-	NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"wa4s-video-%lld.mp4", seq]];
+	BOOL optimized = WAOptimizeVideoNow();
+	NSURLRequest *request = [[WAClient shared] videoRequestForSeq:seq optimized:optimized];
+	__block NSString *path = [[WAClient shared] cachedMediaPathForRequest:request];
+	if (!path) path = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"wa4s-video-%lld%@.mp4", seq, optimized ? @"-small" : @""]];
 	void (^play)(void) = ^{
 		MPMoviePlayerViewController *player = [[MPMoviePlayerViewController alloc] initWithContentURL:[NSURL fileURLWithPath:path]];
 		[vc presentMoviePlayerViewControllerAnimated:player];
@@ -63,10 +67,12 @@
 		return;
 	}
 	[UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
-	[[WAClient shared] load:[[WAClient shared] mediaRequestForSeq:seq format:@"mp4"] completion:^(NSData *data, NSInteger status, NSError *error) {
+	[[WAClient shared] load:request completion:^(NSData *data, NSInteger status, NSError *error) {
 		[UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
 		if (status != 200 || !data.length) return;
-		[data writeToFile:path atomically:YES];
+		NSString *persistent = [[WAClient shared] cachedMediaPathForRequest:request];
+		if (persistent) path = persistent;
+		else [data writeToFile:path atomically:YES];
 		play();
 	}];
 }
@@ -159,7 +165,8 @@
 	NSDictionary *item = _items[(NSUInteger)b.tag];
 	long long seq = [item[@"seq"] longLongValue];
 	if ([item[@"kind"] isEqualToString:@"video"]) [WAMediaViewer playVideoSeq:seq from:self];
-	else [WAMediaViewer showImageRequest:[[WAClient shared] mediaRequestForSeq:seq] placeholder:[b imageForState:UIControlStateNormal] from:self];
+	else [WAMediaViewer showImageRequest:[[WAClient shared] mediaRequestForSeq:seq format:(WAOnWiFi() ? nil : @"optimized")]
+		placeholder:[b imageForState:UIControlStateNormal] from:self];
 }
 
 @end

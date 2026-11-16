@@ -77,6 +77,7 @@ func (b *Bridge) stickerThumbnail(ctx context.Context, seq int64, sticker *waE2E
 
 	if data, err := os.ReadFile(cache); err == nil {
 		if _, err := png.DecodeConfig(bytes.NewReader(data)); err == nil {
+			touchMediaCache(cache)
 			return data, nil
 		}
 		_ = os.Remove(cache)
@@ -84,6 +85,7 @@ func (b *Bridge) stickerThumbnail(ctx context.Context, seq int64, sticker *waE2E
 
 	if data := smallStickerThumbnail(sticker.GetPngThumbnail()); len(data) > 0 {
 		if err := os.WriteFile(cache, data, 0o600); err == nil {
+			pruneMediaCache(b.mediaDir)
 			return data, nil
 		}
 		return data, nil
@@ -119,6 +121,7 @@ func (b *Bridge) stickerThumbnail(ctx context.Context, seq int64, sticker *waE2E
 	if err := os.WriteFile(cache, data, 0o600); err != nil {
 		return data, nil
 	}
+	pruneMediaCache(b.mediaDir)
 	return data, nil
 }
 

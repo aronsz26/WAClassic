@@ -29,7 +29,8 @@ func (b *Bridge) syncArchiveOnce() {
 			// that version; request the authoritative snapshot from the primary phone.
 			log.Printf("archive sync: %v, requesting fresh state from phone", err)
 			if err = b.recoverAppState(ctx, appstate.WAPatchRegularLow); err != nil {
-				log.Printf("archive sync recovery: %v, next connect tries again", err)
+				log.Printf("archive sync recovery: %v, retrying in 5 minutes or on reconnect", err)
+				time.AfterFunc(5*time.Minute, b.syncArchiveOnce)
 				return
 			}
 		}

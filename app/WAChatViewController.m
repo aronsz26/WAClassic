@@ -2,7 +2,9 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <MobileCoreServices/MobileCoreServices.h>
+#import <objc/runtime.h>
 #import "WAChatViewController.h"
+#import "WAChatListViewController.h"
 #import "WAClient.h"
 #import "WAAssets.h"
 #import "WAUtil.h"
@@ -1722,7 +1724,7 @@ static NSString *DayKey(long long ts) {
 	}
 }
 
-#pragma mark - Long press: Reply, React, Copy
+#pragma mark - Long press: Reply, React, Forward, Copy
 
 - (BOOL)canBecomeFirstResponder {
 	return YES;
@@ -1742,8 +1744,11 @@ static NSString *DayKey(long long ts) {
 	CGFloat width = _table.bounds.size.width;
 	CGRect bubble = CGRectMake(mine ? width - size.width - 3 : 3, cell.origin.y + 2, size.width, size.height);
 	UIMenuController *menu = [UIMenuController sharedMenuController];
-	menu.menuItems = @[[[UIMenuItem alloc] initWithTitle:WAL(@"Reply") action:@selector(replyToMessage:)],
-		[[UIMenuItem alloc] initWithTitle:WAL(@"React") action:@selector(reactToMessage:)]];
+	NSMutableArray *items = [NSMutableArray arrayWithObjects:
+		[[UIMenuItem alloc] initWithTitle:WAL(@"Reply") action:@selector(replyToMessage:)],
+		[[UIMenuItem alloc] initWithTitle:WAL(@"React") action:@selector(reactToMessage:)], nil];
+	if ([self canForwardMessage:m]) [items addObject:[[UIMenuItem alloc] initWithTitle:WAL(@"Forward") action:@selector(forwardMessage:)]];
+	menu.menuItems = items;
 	[menu setTargetRect:bubble inView:_table];
 	[menu setMenuVisible:YES animated:YES];
 }
@@ -1751,8 +1756,51 @@ static NSString *DayKey(long long ts) {
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
 	if (!_menuMessage) return NO;
 	if (action == @selector(replyToMessage:) || action == @selector(reactToMessage:)) return YES;
+	if (action == @selector(forwardMessage:)) return [self canForwardMessage:_menuMessage];
 	if (action == @selector(copy:)) return [_menuMessage[@"text"] length] > 0;
 	return NO;
+}
+
+- (BOOL)canForwardMessage:(NSDictionary *)message {
+	NSString *kind = message[@"kind"];
+	if (!kind || [kind hasPrefix:@"view-once-"]) return NO;
+	return [@[@"text", @"image", @"video", @"audio", @"sticker", @"document", @"location", @"contact"] containsObject:kind];
+}
+
+- (void)forwardMessage:(id)sender {
+	NSDictionary *message = _menuMessage;
+	_menuMessage = nil;
+	if (![self canForwardMessage:message]) return;
+	WAChatListViewController *picker = [[WAChatListViewController alloc] initForChoosingChat];
+	__weak WAChatViewController *weakSelf = self;
+	picker.onChooseChat = ^(NSDictionary *chat) {
+		WAChatViewController *strongSelf = weakSelf;
+		if (!strongSelf || !message || !chat) return;
+		strongSelf->_menuMessage = message;
+		NSString *title = [NSString stringWithFormat:WAL(@"Forward to %@?"), chat[@"name"] ?: @""];
+		UIAlertView *confirm = [[UIAlertView alloc] initWithTitle:title message:nil delegate:strongSelf
+			cancelButtonTitle:WAL(@"Cancel") otherButtonTitles:WAL(@"Forward"), nil];
+		confirm.tag = 4107;
+		objc_setAssociatedObject(confirm, @selector(forwardMessage:), chat, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		[confirm show];
+	};
+	[self presentViewController:[[UINavigationController alloc] initWithRootViewController:picker] animated:YES completion:nil];
+}
+
+- (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)buttonIndex {
+	if (alert.tag != 4107) return;
+	NSDictionary *message = _menuMessage;
+	_menuMessage = nil;
+	if (buttonIndex == alert.cancelButtonIndex || !message) return;
+	NSDictionary *chat = objc_getAssociatedObject(alert, @selector(forwardMessage:));
+	if (!chat) return;
+	NSDictionary *params = @{ @"source_chat": _jid, @"message_id": message[@"id"] ?: @"", @"target_chat": chat[@"jid"] ?: @"" };
+	[[WAClient shared] post:@"/api/message/forward" params:params completion:^(id json, NSError *error) {
+		if (error) {
+			[[[UIAlertView alloc] initWithTitle:WAL(@"Not sent") message:error.localizedDescription delegate:nil
+				cancelButtonTitle:WAL(@"OK") otherButtonTitles:nil] show];
+		}
+	}];
 }
 
 - (void)copy:(id)sender {

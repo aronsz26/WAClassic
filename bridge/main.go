@@ -166,6 +166,7 @@ func main() {
 	api("/api/messages", b.apiMessages)
 	api("/api/updates", b.apiUpdates)
 	api("/api/send", b.apiSend)
+	api("/api/message/forward", b.apiForwardMessage)
 	api("/api/read", b.apiRead)
 	api("/api/react", b.apiReact)
 	api("/api/media", b.apiMedia)

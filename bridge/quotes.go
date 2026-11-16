@@ -29,6 +29,8 @@ func contextOf(msg *waE2E.Message) *waE2E.ContextInfo {
 		return msg.GetLocationMessage().GetContextInfo()
 	case msg.GetContactMessage() != nil:
 		return msg.GetContactMessage().GetContextInfo()
+	case msg.GetDocumentWithCaptionMessage() != nil:
+		return contextOf(msg.GetDocumentWithCaptionMessage().GetMessage())
 	}
 	return nil
 }

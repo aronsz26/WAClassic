@@ -500,3 +500,20 @@ func (s *Store) MessageByID(chat, id string) (*Message, []byte, error) {
 	}
 	return &m, raw, nil
 }
+
+// MessageBySeq finds the exact row shown by the app, independent of JID aliases.
+func (s *Store) MessageBySeq(seq int64) (*Message, []byte, error) {
+	var m Message
+	var raw []byte
+	var q Quote
+	err := s.db.QueryRow(`SELECT `+msgCols+`, raw FROM messages WHERE seq = ?`, seq).Scan(
+		&m.Seq, &m.ID, &m.Chat, &m.Sender, &m.FromMe, &m.TS, &m.Kind, &m.Text, &m.Status, &m.Upd, &m.Secs, &m.Created,
+		&q.ID, &q.Sender, &q.Kind, &q.Text, &raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	if q.ID != "" {
+		m.Quote = &q
+	}
+	return &m, raw, nil
+}

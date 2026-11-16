@@ -1794,7 +1794,8 @@ static NSString *DayKey(long long ts) {
 	if (buttonIndex == alert.cancelButtonIndex || !message) return;
 	NSDictionary *chat = objc_getAssociatedObject(alert, @selector(forwardMessage:));
 	if (!chat) return;
-	NSDictionary *params = @{ @"source_chat": _jid, @"message_id": message[@"id"] ?: @"", @"target_chat": chat[@"jid"] ?: @"" };
+	NSDictionary *params = @{ @"source_chat": _jid, @"message_id": message[@"id"] ?: @"",
+		@"message_seq": message[@"seq"] ?: @"0", @"target_chat": chat[@"jid"] ?: @"" };
 	[[WAClient shared] post:@"/api/message/forward" params:params completion:^(id json, NSError *error) {
 		if (error) {
 			[[[UIAlertView alloc] initWithTitle:WAL(@"Not sent") message:error.localizedDescription delegate:nil

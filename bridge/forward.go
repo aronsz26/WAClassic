@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/polymorfa/hypermeow/proto/waE2E"
 	"github.com/polymorfa/hypermeow/types"
@@ -19,11 +20,20 @@ func (b *Bridge) apiForwardMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sourceChat, messageID, targetChat := r.FormValue("source_chat"), r.FormValue("message_id"), r.FormValue("target_chat")
-	if sourceChat == "" || messageID == "" || targetChat == "" {
-		http.Error(w, "source_chat, message_id and target_chat needed", http.StatusBadRequest)
+	seq := int64(0)
+	if rawSeq := r.FormValue("message_seq"); rawSeq != "" {
+		var err error
+		seq, err = strconv.ParseInt(rawSeq, 10, 64)
+		if err != nil || seq <= 0 {
+			httpErr(w, errors.New("invalid message sequence"), http.StatusBadRequest)
+			return
+		}
+	}
+	if sourceChat == "" || (messageID == "" && seq == 0) || targetChat == "" {
+		httpErr(w, errors.New("source_chat, message_id or message_seq, and target_chat needed"), http.StatusBadRequest)
 		return
 	}
-	msg, err := b.forwardMessage(r.Context(), sourceChat, messageID, targetChat)
+	msg, err := b.forwardMessage(r.Context(), sourceChat, messageID, seq, targetChat)
 	if err != nil {
 		status := http.StatusBadGateway
 		if errors.Is(err, errCannotForward) {
@@ -31,7 +41,7 @@ func (b *Bridge) apiForwardMessage(w http.ResponseWriter, r *http.Request) {
 		} else if err == errMessageNotFound {
 			status = http.StatusNotFound
 		}
-		http.Error(w, err.Error(), status)
+		httpErr(w, err, status)
 		return
 	}
 	writeJSON(w, msg)
@@ -39,7 +49,7 @@ func (b *Bridge) apiForwardMessage(w http.ResponseWriter, r *http.Request) {
 
 var errMessageNotFound = errors.New("message not found")
 
-func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID, targetChat string) (*Message, error) {
+func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID string, seq int64, targetChat string) (*Message, error) {
 	source, err := types.ParseJID(sourceChat)
 	if err != nil || (source.Server != types.DefaultUserServer && source.Server != types.LegacyUserServer && source.Server != types.HiddenUserServer && source.Server != types.GroupServer) {
 		return nil, errors.New("invalid source chat")
@@ -53,7 +63,13 @@ func (b *Bridge) forwardMessage(ctx context.Context, sourceChat, messageID, targ
 	// when messages are stored before looking up the source row.
 	source = b.chatKey(ctx, source).ToNonAD()
 	target = b.chatKey(ctx, target).ToNonAD()
-	stored, raw, err := b.store.MessageByID(source.String(), messageID)
+	var stored *Message
+	var raw []byte
+	if seq > 0 {
+		stored, raw, err = b.store.MessageBySeq(seq)
+	} else {
+		stored, raw, err = b.store.MessageByID(source.String(), messageID)
+	}
 	if err != nil {
 		return nil, errMessageNotFound
 	}

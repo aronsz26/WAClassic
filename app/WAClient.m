@@ -1,5 +1,6 @@
 #import <CommonCrypto/CommonDigest.h>
 #import <SystemConfiguration/SystemConfiguration.h>
+#include <string.h>
 #import "WAClient.h"
 #import "WAUtil.h"
 #import "WADiag.h"
@@ -123,7 +124,63 @@ NSString *WAEscape(NSString *s) {
 	NSUInteger _pollErrors;
 	NSCache *_avatars;
 	NSMutableDictionary *_avatarWaiters;
-	NSMutableSet *_noAvatar;
+	NSMutableDictionary *_mediaWaiters;
+}
+
+static NSString *WAMediaCacheDirectory(void) {
+	return [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
+		stringByAppendingPathComponent:@"MediaCache"];
+}
+
+static NSString *WAMediaCacheCategory(NSURLRequest *request) {
+	NSString *format = nil;
+	for (NSString *part in [request.URL.query componentsSeparatedByString:@"&"]) {
+		if ([part hasPrefix:@"format="]) { format = [part substringFromIndex:7]; break; }
+	}
+	if ([format isEqualToString:@"m4a"]) return @"audio";
+	if ([format isEqualToString:@"mp4"]) return @"video";
+	return @"images";
+}
+
+static unsigned long long WAMediaCacheLimit(NSString *category) {
+	if ([category isEqualToString:@"audio"]) return 20ULL * 1024 * 1024;
+	if ([category isEqualToString:@"video"]) return 128ULL * 1024 * 1024;
+	return 30ULL * 1024 * 1024;
+}
+
+static NSString *WAMediaCachePath(NSURLRequest *request, NSString *token) {
+	NSString *category = WAMediaCacheCategory(request);
+	NSString *identity = [NSString stringWithFormat:@"%@\n%@", request.URL.absoluteString ?: @"", token ?: @""];
+	unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+	CC_SHA256(identity.UTF8String, (CC_LONG)strlen(identity.UTF8String), digest);
+	NSMutableString *key = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+	for (NSUInteger i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) [key appendFormat:@"%02x", digest[i]];
+	NSString *extension = [category isEqualToString:@"audio"] ? @"m4a" : ([category isEqualToString:@"video"] ? @"mp4" : @"img");
+	return [[[WAMediaCacheDirectory() stringByAppendingPathComponent:category] stringByAppendingPathComponent:key]
+		stringByAppendingPathExtension:extension];
+}
+
+static void WAPruneMediaCache(NSString *directory, unsigned long long limit) {
+	NSFileManager *fm = [NSFileManager defaultManager];
+	NSArray *files = [fm contentsOfDirectoryAtPath:directory error:NULL];
+	NSMutableArray *entries = [NSMutableArray array];
+	unsigned long long total = 0;
+	for (NSString *name in files) {
+		NSString *path = [directory stringByAppendingPathComponent:name];
+		NSDictionary *attrs = [fm attributesOfItemAtPath:path error:NULL];
+		if (![attrs[NSFileType] isEqualToString:NSFileTypeRegular]) continue;
+		unsigned long long size = [attrs[NSFileSize] unsignedLongLongValue];
+		total += size;
+		[entries addObject:@{ @"path": path, @"size": @(size), @"date": attrs[NSFileModificationDate] ?: [NSDate distantPast] }];
+	}
+	[entries sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+		return [a[@"date"] compare:b[@"date"]];
+	}];
+	for (NSDictionary *entry in entries) {
+		if (total <= limit) break;
+		[fm removeItemAtPath:entry[@"path"] error:NULL];
+		total -= [entry[@"size"] unsignedLongLongValue];
+	}
 }
 
 + (WAClient *)shared {
@@ -137,7 +194,7 @@ NSString *WAEscape(NSString *s) {
 	if ((self = [super init])) {
 		_avatars = [[NSCache alloc] init];
 		_avatarWaiters = [NSMutableDictionary dictionary];
-		_noAvatar = [NSMutableSet set];
+		_mediaWaiters = [NSMutableDictionary dictionary];
 		NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
 		_homeURL = [([d stringForKey:@"homeURL"] ?: [d stringForKey:@"serverURL"]) copy]; // old single address
 		_awayURL = [[d stringForKey:@"awayURL"] copy];
@@ -236,7 +293,58 @@ static void NetworkChanged(SCNetworkReachabilityRef target, SCNetworkReachabilit
 }
 
 - (void)load:(NSURLRequest *)request completion:(void (^)(NSData *, NSInteger, NSError *))completion {
-	[WAConnection load:request pin:self.pin completion:completion];
+	if ([request.HTTPMethod.uppercaseString isEqualToString:@"POST"] || ![request.URL.path isEqualToString:@"/api/media"]) {
+		[WAConnection load:request pin:self.pin completion:completion];
+		return;
+	}
+	NSString *path = WAMediaCachePath(request, self.token);
+	@synchronized (self) {
+		NSMutableArray *waiters = _mediaWaiters[path];
+		if (waiters) { [waiters addObject:[completion copy]]; return; }
+		_mediaWaiters[path] = [NSMutableArray arrayWithObject:[completion copy]];
+	}
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		NSData *cached = [NSData dataWithContentsOfFile:path];
+		if (cached.length) {
+			[[NSFileManager defaultManager] setAttributes:@{NSFileModificationDate: [NSDate date]} ofItemAtPath:path error:NULL];
+			dispatch_async(dispatch_get_main_queue(), ^{ [self finishMediaCacheKey:path data:cached status:200 error:nil]; });
+			return;
+		}
+		dispatch_async(dispatch_get_main_queue(), ^{ [WAConnection load:request pin:self.pin completion:^(NSData *data, NSInteger status, NSError *error) {
+			if (!error && status == 200 && data.length) {
+				NSString *directory = [path stringByDeletingLastPathComponent];
+				unsigned long long limit = WAMediaCacheLimit(WAMediaCacheCategory(request));
+				if (data.length <= limit) {
+					dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+						NSFileManager *fm = [NSFileManager defaultManager];
+						[fm createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
+						[data writeToFile:path atomically:YES];
+						WAPruneMediaCache(directory, limit);
+						dispatch_async(dispatch_get_main_queue(), ^{ [self finishMediaCacheKey:path data:data status:status error:error]; });
+					});
+					return;
+				}
+			}
+			[self finishMediaCacheKey:path data:data status:status error:error];
+		}]; });
+	});
+}
+
+- (NSString *)cachedMediaPathForRequest:(NSURLRequest *)request {
+	if (![request.URL.path isEqualToString:@"/api/media"]) return nil;
+	NSString *path = WAMediaCachePath(request, self.token);
+	if (![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
+	[[NSFileManager defaultManager] setAttributes:@{NSFileModificationDate: [NSDate date]} ofItemAtPath:path error:NULL];
+	return path;
+}
+
+- (void)finishMediaCacheKey:(NSString *)key data:(NSData *)data status:(NSInteger)status error:(NSError *)error {
+	NSArray *waiters;
+	@synchronized (self) {
+		waiters = [_mediaWaiters[key] copy];
+		[_mediaWaiters removeObjectForKey:key];
+	}
+	for (void (^waiter)(NSData *, NSInteger, NSError *) in waiters) waiter(data, status, error);
 }
 
 - (void)probe:(NSString *)base completion:(void (^)(BOOL ok))completion {
@@ -463,32 +571,111 @@ static const NSUInteger kPiece = 128 * 1024;
 
 #pragma mark - Profile pictures
 
+static NSTimeInterval const kAvatarCacheLifetime = 24 * 60 * 60;
+static unsigned long long const kAvatarCacheLimit = 5 * 1024 * 1024;
+
+- (NSString *)avatarCachePathFor:(NSString *)jid missing:(BOOL)missing {
+	NSString *identity = [NSString stringWithFormat:@"%@\n%@\n%@", self.serverURL ?: @"", self.token ?: @"", jid ?: @""];
+	unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+	CC_SHA256(identity.UTF8String, (CC_LONG)strlen(identity.UTF8String), digest);
+	NSMutableString *key = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+	for (NSUInteger i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) [key appendFormat:@"%02x", digest[i]];
+	NSString *directory = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
+		stringByAppendingPathComponent:@"ProfilePictures"];
+	[[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
+	return [directory stringByAppendingPathComponent:[key stringByAppendingString:missing ? @".none" : @".jpg"]];
+}
+
+- (BOOL)avatarCachePath:(NSString *)path isFresh:(BOOL *)fresh {
+	NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
+	NSDate *date = attrs[NSFileModificationDate];
+	if (!date) return NO;
+	if (fresh) *fresh = [[NSDate date] timeIntervalSinceDate:date] < kAvatarCacheLifetime;
+	return YES;
+}
+
+- (void)pruneAvatarCacheKeeping:(NSString *)recentPath {
+	NSString *directory = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
+		stringByAppendingPathComponent:@"ProfilePictures"];
+	NSArray *paths = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:directory error:NULL];
+	NSMutableArray *entries = [NSMutableArray array];
+	unsigned long long total = 0;
+	for (NSString *name in paths) {
+		NSString *path = [directory stringByAppendingPathComponent:name];
+		NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
+		if (!attrs) continue;
+		unsigned long long size = [attrs[NSFileSize] unsignedLongLongValue];
+		total += size;
+		[entries addObject:@{ @"path": path, @"date": attrs[NSFileModificationDate] ?: [NSDate distantPast], @"size": @(size) }];
+	}
+	[entries sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+		return [a[@"date"] compare:b[@"date"]];
+	}];
+	for (NSDictionary *entry in entries) {
+		NSString *path = entry[@"path"];
+		if (total <= kAvatarCacheLimit) break;
+		if ([path isEqualToString:recentPath]) continue;
+		if ([[NSFileManager defaultManager] removeItemAtPath:path error:NULL]) total -= [entry[@"size"] unsignedLongLongValue];
+	}
+}
+
 - (UIImage *)cachedAvatarFor:(NSString *)jid {
-	return jid ? [_avatars objectForKey:jid] : nil;
+	if (!jid.length) return nil;
+	UIImage *image = [_avatars objectForKey:jid];
+	if (image) return image;
+	NSData *data = [NSData dataWithContentsOfFile:[self avatarCachePathFor:jid missing:NO]];
+	image = data.length ? [UIImage imageWithData:data] : nil;
+	if (image) [_avatars setObject:image forKey:jid];
+	return image;
 }
 
 - (void)avatarFor:(NSString *)jid completion:(void (^)(UIImage *image))completion {
 	if (!jid.length || !self.configured) return;
-	UIImage *img = [_avatars objectForKey:jid];
-	if (img || [_noAvatar containsObject:jid]) {
+	NSString *file = [self avatarCachePathFor:jid missing:NO];
+	NSString *none = [self avatarCachePathFor:jid missing:YES];
+	BOOL freshImage = NO, freshNone = NO;
+	UIImage *img = [self cachedAvatarFor:jid];
+	BOOL hasImage = [self avatarCachePath:file isFresh:&freshImage];
+	BOOL hasNone = [self avatarCachePath:none isFresh:&freshNone];
+	if (hasImage && freshImage && img) {
 		completion(img);
 		return;
 	}
-	NSMutableArray *waiters = _avatarWaiters[jid];
+	if (hasNone && freshNone) {
+		completion(nil);
+		return;
+	}
+	NSString *waiterKey = [NSString stringWithFormat:@"%@\n%@", self.serverURL ?: @"", jid];
+	NSMutableArray *waiters = _avatarWaiters[waiterKey];
 	if (waiters) {
 		[waiters addObject:[completion copy]];
 		return;
 	}
-	_avatarWaiters[jid] = [NSMutableArray arrayWithObject:[completion copy]];
+	_avatarWaiters[waiterKey] = [NSMutableArray arrayWithObject:[completion copy]];
 	NSMutableURLRequest *req = [self requestFor:@"/api/avatar" params:@{@"jid": jid}];
 	[self load:req completion:^(NSData *data, NSInteger code, NSError *error) {
 			UIImage *image = code == 200 && data.length ? [UIImage imageWithData:data] : nil;
-			if (image) [self->_avatars setObject:image forKey:jid];
-			else if (code == 404) [self->_noAvatar addObject:jid];
-			NSArray *list = self->_avatarWaiters[jid];
-			[self->_avatarWaiters removeObjectForKey:jid];
+			if (image) {
+				[self->_avatars setObject:image forKey:jid];
+				[data writeToFile:file atomically:YES];
+				[self pruneAvatarCacheKeeping:file];
+				[[NSFileManager defaultManager] removeItemAtPath:none error:NULL];
+			} else if (code == 404) {
+				[[NSFileManager defaultManager] removeItemAtPath:file error:NULL];
+				[[NSData data] writeToFile:none atomically:YES];
+				[self->_avatars removeObjectForKey:jid];
+			}
+			NSArray *list = self->_avatarWaiters[waiterKey];
+			[self->_avatarWaiters removeObjectForKey:waiterKey];
 			for (void (^block)(UIImage *) in list) block(image);
 		}];
+}
+
+- (void)forgetAvatar:(NSString *)jid {
+	if (!jid.length) return;
+	[_avatars removeObjectForKey:jid];
+	[[NSFileManager defaultManager] removeItemAtPath:[self avatarCachePathFor:jid missing:NO] error:NULL];
+	[[NSFileManager defaultManager] removeItemAtPath:[self avatarCachePathFor:jid missing:YES] error:NULL];
 }
 
 - (void)setOnline:(BOOL)online {

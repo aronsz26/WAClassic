@@ -178,6 +178,7 @@ func main() {
 	api("/api/contactinfo", b.apiContactInfo)
 	api("/api/chatmedia", b.apiChatMedia)
 	api("/api/mute", b.apiMute)
+	api("/api/chat/archive", b.apiArchiveChat)
 	api("/api/chat/delete", b.apiDeleteChat)
 	api("/api/broadcasts", b.apiBroadcasts)
 	api("/api/broadcast/send", b.apiBroadcastSend)

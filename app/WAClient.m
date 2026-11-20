@@ -108,6 +108,10 @@ static NSMutableSet *running;
 
 static NSString *const kDomain = @"com.aronsz26.wa4s";
 
+@interface WAClient (MessageSnapshotPrivate)
+- (NSArray *)cacheMessages:(NSArray *)messages forChat:(NSString *)jid seedIfMissing:(BOOL)seed;
+@end
+
 NSString *WAEscape(NSString *s) {
 	CFStringRef out = CFURLCreateStringByAddingPercentEscapes(NULL, (__bridge CFStringRef)(s ?: @""), NULL,
 		CFSTR("!*'();:@&=+$,/?%#[] "), kCFStringEncodingUTF8);
@@ -122,6 +126,7 @@ NSString *WAEscape(NSString *s) {
 	BOOL _away;
 	NSUInteger _pollErrors;
 	NSCache *_avatars;
+	NSCache *_messageSnapshots;
 	NSMutableDictionary *_avatarWaiters;
 	NSMutableSet *_noAvatar;
 }
@@ -136,6 +141,8 @@ NSString *WAEscape(NSString *s) {
 - (instancetype)init {
 	if ((self = [super init])) {
 		_avatars = [[NSCache alloc] init];
+		_messageSnapshots = [[NSCache alloc] init];
+		_messageSnapshots.countLimit = 12;
 		_avatarWaiters = [NSMutableDictionary dictionary];
 		_noAvatar = [NSMutableSet set];
 		NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
@@ -500,6 +507,55 @@ static const NSUInteger kPiece = 128 * 1024;
 	return _upd;
 }
 
+- (NSString *)messageSnapshotKeyForChat:(NSString *)jid {
+	return [NSString stringWithFormat:@"%@\n%@\n%@", self.serverURL ?: @"", self.token ?: @"", jid ?: @""];
+}
+
+- (NSArray *)cachedMessagesForChat:(NSString *)jid {
+	if (!jid.length) return nil;
+	NSString *key = [self messageSnapshotKeyForChat:jid];
+	@synchronized (self) {
+		return [[_messageSnapshots objectForKey:key] copy];
+	}
+}
+
+- (NSArray *)storeMessages:(NSArray *)messages forChat:(NSString *)jid {
+	return [self cacheMessages:messages forChat:jid seedIfMissing:YES];
+}
+
+- (NSArray *)mergeMessages:(NSArray *)messages forChat:(NSString *)jid {
+	return [self cacheMessages:messages forChat:jid seedIfMissing:NO];
+}
+
+- (NSArray *)cacheMessages:(NSArray *)messages forChat:(NSString *)jid seedIfMissing:(BOOL)seed {
+	if (!jid.length || ![messages isKindOfClass:[NSArray class]]) return [self cachedMessagesForChat:jid];
+	NSString *key = [self messageSnapshotKeyForChat:jid];
+	@synchronized (self) {
+		NSArray *oldSnapshot = [_messageSnapshots objectForKey:key];
+		if (!oldSnapshot && !seed) return nil;
+		NSMutableArray *merged = [oldSnapshot mutableCopy] ?: [NSMutableArray array];
+		for (NSDictionary *message in messages) {
+			if (![message isKindOfClass:[NSDictionary class]]) continue;
+			NSUInteger index = [merged indexOfObjectPassingTest:^BOOL(NSDictionary *old, NSUInteger i, BOOL *stop) {
+				BOOL sameSeq = [old[@"seq"] respondsToSelector:@selector(isEqual:)] && [old[@"seq"] isEqual:message[@"seq"]];
+				BOOL sameID = [old[@"id"] length] && [old[@"id"] isEqualToString:message[@"id"]];
+				return sameSeq || sameID;
+			}];
+			if (index == NSNotFound) [merged addObject:message];
+			else merged[index] = message;
+		}
+		[merged sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+			long long ta = [a[@"ts"] longLongValue], tb = [b[@"ts"] longLongValue];
+			if (ta != tb) return ta < tb ? NSOrderedAscending : NSOrderedDescending;
+			return [a[@"seq"] compare:b[@"seq"]];
+		}];
+		if (merged.count > 80) [merged removeObjectsInRange:NSMakeRange(0, merged.count - 80)];
+		NSArray *snapshot = [merged copy];
+		[_messageSnapshots setObject:snapshot forKey:key];
+		return snapshot;
+	}
+}
+
 - (void)noteUpd:(long long)upd {
 	if (upd <= _upd) return;
 	_upd = upd;
@@ -542,6 +598,10 @@ static const NSUInteger kPiece = 128 * 1024;
 		self->_pollErrors = 0;
 		[self noteUpd:[json[@"upd"] longLongValue]];
 		NSArray *messages = json[@"messages"];
+		for (NSDictionary *message in messages) {
+			NSString *chat = message[@"chat"];
+			if (chat.length) [self mergeMessages:@[message] forChat:chat];
+		}
 		NSArray *presence = [json[@"presence"] isKindOfClass:[NSArray class]] ? json[@"presence"] : @[];
 		BOOL chatsChanged = [json[@"chatsChanged"] boolValue];
 		NSDictionary *call = [json[@"call"] isKindOfClass:[NSDictionary class]] ? json[@"call"] : nil;

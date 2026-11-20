@@ -309,6 +309,7 @@ static NSString *DayKey(long long ts) {
 	NSDictionary *_chat;
 	NSString *_jid;
 	BOOL _group;
+	BOOL _initialMessagesLoaded;
 	NSMutableArray *_messages; // oldest first
 	NSMutableArray *_rows; // messages + day titles
 	UITableView *_table;
@@ -811,9 +812,22 @@ static NSString *DayKey(long long ts) {
 }
 
 - (void)load {
+	NSArray *cached = [[WAClient shared] cachedMessagesForChat:_jid];
+	if (cached) {
+		_initialMessagesLoaded = YES;
+		[_messages setArray:cached];
+		[self rebuildRows];
+		[self scrollToBottom:NO];
+		[self markRead];
+		return; // the long poll keeps this snapshot current while the chat list is open
+	}
 	[[WAClient shared] get:@"/api/messages" params:@{@"chat": _jid, @"limit": @80} completion:^(id json, NSError *error) {
 		if (error) return;
-		[self->_messages setArray:json[@"messages"]];
+		NSMutableArray *initial = [json[@"messages"] mutableCopy] ?: [NSMutableArray array];
+		[initial addObjectsFromArray:self->_messages]; // keep long-poll messages that arrived during the initial request
+		NSArray *snapshot = [[WAClient shared] storeMessages:initial forChat:self->_jid];
+		self->_initialMessagesLoaded = YES;
+		[self->_messages setArray:snapshot ?: @[]];
 		[self rebuildRows];
 		[self scrollToBottom:NO];
 		[self markRead];
@@ -903,6 +917,8 @@ static NSString *DayKey(long long ts) {
 		if (ta != tb) return ta < tb ? NSOrderedAscending : NSOrderedDescending;
 		return [a[@"seq"] compare:b[@"seq"]];
 	}];
+	if (_initialMessagesLoaded) [[WAClient shared] storeMessages:_messages forChat:_jid];
+	else [[WAClient shared] mergeMessages:_messages forChat:_jid];
 	[self rebuildRows];
 	if (added) [self scrollToBottom:YES];
 	if (incoming) [self markRead];
